@@ -1,0 +1,59 @@
+    expocode: expocode_gp
+    time: time_gp
+    lat: lat_gp
+    lon: lon_gp
+    bottomdepth: bottomdepth_gp
+    # maxsampdepth: maxsampdepth_gp
+    depth: depth_gp
+    temperature: temp_gp
+    salinity: salinity_gp
+    aou: aou_gp
+    nitrate: nitrate_gp
+    silicate: silicate_gp
+    phosphate: phosphate_gp
+    tco2: tco2_gp
+    fco2: fco2_gp
+    phtsinsitutp: phtsinsitutp_gp
+    talk: talk_gp
+    talkf: talk_flag_gp
+    talkqc: talk_qc_gp
+    year: year_gp
+
+    mld_dens_soda: mld_soda
+
+    sst_cci: sst_cciT
+    sst_cci_uncertainty: sst_uncert_cciT
+    ice_cci: ice_cciT
+    time_sstcci: time_cciT
+    lat_sstcci: lat_cciT
+    lon_sstcci: lon_cciT
+
+    ssh_adt: ssh_adt_cmems
+    ssh_sla: ssh_sla_cmems
+    lat_sshcm: lat_cmems
+    lon_sshcm: lon_cmems
+    time_sshcm: time_cmems
+
+    lat_sssglorys: lat_glorys
+    lon_sssglorys: lon_glorys
+    time_sssglorys: time_glorys
+
+    sss_multiobs_error: sss_error_multiobs
+    depth_sssmult: depth_multiobs
+    lat_sssmult: lat_multiobs
+    lon_sssmult: lon_multiobs
+    time_sssmult: time_multiobs
+
+    chl_globcolour_uncert: chl_uncert_globcolour
+    chl_globcolour_flags: chl_flags_globcolour
+    time_chlgc: time_globcolour
+    lat_chlgc: lat_globcolour
+    lon_chlgc: lon_globcolour
+     
+    sss_cci: sss_cciS
+    sss_cci_random_error: sss_random_error_cciS
+    lat_ssscci: lat_cciS
+    lon_ssscci: lon_cciS
+    time_ssscci: time_cciS
+
+    

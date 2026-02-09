@@ -6,9 +6,11 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "cartopy>=0.25.0",
+    "ipykernel>=7.1.0",
     "matplotlib>=3.10.8",
     "munch>=4.0.0",
     "pandas>=3.0.0",
+    "pyarrow>=23.0.0",
     "python-dotenv>=1.2.1",
     "scikit-learn>=1.8.0",
     "torch>=2.10.0",

@@ -1,0 +1,93 @@
+
+GLODAP:
+  coord:
+    lat : 'lat'
+    lon : 'lon'
+    time : 'time'
+    depth: 'depth'
+
+  vars_list: ['salinity', 'oxygen', 'aou', 'nitrate', 'nitrite', 'silicate', 'phosphate', 'tco2', 'fco2', 'phtsinsitutp', 'talk', 'temperature']
+
+  uncert_list: ['talkf', 'talkqc']
+  columns:
+    start: 0
+    end: 21
+
+SODA:
+  coord:
+    lat: 'lat_soda'
+    lon: 'lon_soda'
+    time: 'time_soda'
+    depth : 'depth_soda'
+  vars_list: ['salt_soda', 'mld_dens_soda','temp_soda']
+  uncert_list: []
+  columns:
+    start: 22
+    end: 28
+
+SST_CCI:
+  coord:
+    lat: 'lat_sstcci'
+    lon: 'lon_sstcci'
+    time: 'time_sstcci'
+  vars_list: ['sst_cci', 'ice_cci']
+  uncert_list: ['sst_cci_uncertainty']
+  columns:
+    start: 29
+    end: 34
+
+SSS_CCI:
+  coord:
+    lat: 'lat_ssscci'
+    lon: 'lon_ssscci'
+    time: 'time_ssscci'
+  vars_list: ['sss_cci']
+  uncert_list: ['sss_cci_random_error']
+  columns:
+    start: 57
+    end: 61
+
+CMEMS:
+  coord:
+    lat: 'lat_sshcm'
+    lon: 'lon_sshcm'
+    time: 'time_sshcm'
+  vars_list: ['ssh_adt', 'ssh_sla']
+  uncert_list: []
+  columns:
+    start: 35
+    end: 39
+
+GLORYS:
+  coord:
+    lat: 'lat_glorys'
+    lon: 'lon_glorys'
+    time: 'time_glorys'
+  vars_list: ['sss_glorys', 'mld_glorys']
+  uncert_list: []
+  columns:
+    start: 40
+    end: 44
+
+MULTIOBS:
+  coord:
+    lat: 'lat_sssmult'
+    lon: 'lon_sssmult'
+    time: 'time_sssmult'
+    depth: 'depth_mult'
+  vars_list: ['sss_multiobs']
+  uncert_list: ['sss_multiobs_error']
+  columns:
+    start: 45
+    end: 49
+
+GLOBCOLOUR:
+  coord:
+    lat: 'lat_chlgc'
+    lon: 'lon_chlgc'
+    time: 'time_chlgc'
+  vars_list:  ['chl_globcolour']
+  uncert_list: ['chl_globcolour_uncert', 'chl_globcolour_flags']
+  columns:
+    start: 50
+    end: 56
