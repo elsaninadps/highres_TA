@@ -9,8 +9,10 @@
     salinity: salinity_gp
     aou: aou_gp
     nitrate: nitrate_gp
+    nitrite: nitrite_gp
     silicate: silicate_gp
     phosphate: phosphate_gp
+    oxygen: oxygen_gp
     tco2: tco2_gp
     fco2: fco2_gp
     phtsinsitutp: phtsinsitutp_gp
@@ -20,6 +22,7 @@
     year: year_gp
 
     mld_dens_soda: mld_soda
+    salt_soda: salinity_soda
 
     sst_cci: sst_cciT
     sst_cci_uncertainty: sst_uncert_cciT
@@ -49,7 +52,7 @@
     time_chlgc: time_globcolour
     lat_chlgc: lat_globcolour
     lon_chlgc: lon_globcolour
-     
+    
     sss_cci: sss_cciS
     sss_cci_random_error: sss_random_error_cciS
     lat_ssscci: lat_cciS
