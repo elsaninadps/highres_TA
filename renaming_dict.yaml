@@ -3,7 +3,7 @@
     lat: lat_gp
     lon: lon_gp
     bottomdepth: bottomdepth_gp
-    # maxsampdepth: maxsampdepth_gp
+    maxsampdepth: maxsampdepth_gp
     depth: depth_gp
     temperature: temp_gp
     salinity: salinity_gp
