@@ -1,0 +1,32 @@
+{
+  "model_type": "CatBoostRegressor",
+  "features": [
+    "temp_gp",
+    "salinity_gp",
+    "mld_soda",
+    "sst_cciT",
+    "ice_cciT",
+    "ssh_adt_cmems",
+    "ssh_sla_cmems",
+    "mld_glorys",
+    "chl_globcolour"
+  ],
+  "params": {
+    "iterations": 10,
+    "loss_function": "RMSE"
+  },
+  "eval_scores": {
+    "MAE": {
+      "eval_set": 19.23920555802458
+    },
+    "R2": {
+      "eval_set": 0.8572107075924122
+    },
+    "RMSE": {
+      "eval_set": 38.06298432511883
+    },
+    "bias": {
+      "eval_set": -2.5426222375872065
+    }
+  }
+}

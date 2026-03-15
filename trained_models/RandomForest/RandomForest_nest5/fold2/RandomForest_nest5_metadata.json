@@ -1,0 +1,48 @@
+{
+  "model_type": "RandomForestRegressor",
+  "features": [
+    "temp_gp",
+    "salinity_gp",
+    "mld_soda",
+    "sst_cciT",
+    "ice_cciT",
+    "ssh_adt_cmems",
+    "ssh_sla_cmems",
+    "mld_glorys",
+    "chl_globcolour"
+  ],
+  "params": {
+    "bootstrap": true,
+    "ccp_alpha": 0.0,
+    "criterion": "squared_error",
+    "max_depth": null,
+    "max_features": 1.0,
+    "max_leaf_nodes": null,
+    "max_samples": null,
+    "min_impurity_decrease": 0.0,
+    "min_samples_leaf": 1,
+    "min_samples_split": 2,
+    "min_weight_fraction_leaf": 0.0,
+    "monotonic_cst": null,
+    "n_estimators": 5,
+    "n_jobs": null,
+    "oob_score": false,
+    "random_state": 42,
+    "verbose": 0,
+    "warm_start": false
+  },
+  "eval_scores": {
+    "MAE": {
+      "eval_set": 16.86752361713238
+    },
+    "R2": {
+      "eval_set": 0.8937112650911988
+    },
+    "RMSE": {
+      "eval_set": 42.113012831699145
+    },
+    "bias": {
+      "eval_set": 0.9906633851609141
+    }
+  }
+}
