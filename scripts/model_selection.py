@@ -87,6 +87,7 @@ def main():
     cv_results = ()
     for model_cv_params in config.params:
         cv_model = train_model(train_x, train_y, cv_splitter, model_cv_params)
+        save_cv_model(cv_model, model_cv_params.model_name)
         cv_results += (extract_cv_results(cv_model),)
         cv_models += (cv_model,)
 
@@ -210,6 +211,14 @@ def train_model(
     grid_search.fit(train_x, train_y)
 
     return grid_search
+
+
+def save_cv_model(cv_model: GridSearchCV, model_name: str):
+    import joblib
+
+    save_path = ROOT / f"models/cv_{model_name}.joblib"
+    joblib.dump(cv_model, save_path)
+    logger.info(f"Saved CV model to {save_path}")
 
 
 def extract_cv_results(cv_model: GridSearchCV) -> pd.DataFrame:
