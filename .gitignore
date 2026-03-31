@@ -12,3 +12,5 @@ trained_models/
 # Virtual environments
 .venv
 .env
+
+data/
