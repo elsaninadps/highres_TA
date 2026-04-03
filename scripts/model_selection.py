@@ -18,7 +18,7 @@ ModelSklearnAPI = (
     Type[RandomForestRegressor] | Type[catboost.CatBoostRegressor] | Type[lightgbm.LGBMRegressor]
 )
 
-CONFIG_FNAME = "model_selection_config.yaml"
+CONFIG_FNAME = "cv_example_config.yaml"
 
 LOGGING_LEVEL = "INFO"
 CV_VERBOSITY = 3
