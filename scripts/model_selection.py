@@ -17,12 +17,15 @@ ModelSklearnAPI = (
     Type[RandomForestRegressor] | Type[catboost.CatBoostRegressor] | Type[lightgbm.LGBMRegressor]
 )
 
+CONFIG_FNAME = "model_selection_config.yaml"
 
 LOGGING_LEVEL = "INFO"
 CV_VERBOSITY = 3
 N_CPUS = -1  # -1 = all available CPUs
+
 ROOT = Path(dotenv.find_dotenv("pyproject.toml")).parent
 DATA_PATH = ROOT / "data/training/GLODAPv2023-raw_collocated-{y}.pq"
+
 CV_SCORING_METRICS = [
     "neg_root_mean_squared_error",
     "neg_median_absolute_error",
@@ -30,16 +33,19 @@ CV_SCORING_METRICS = [
     "neg_mean_absolute_percentage_error",
     "r2",
 ]
+
 DF_INDEX_COLUMNS = (
     "expocode",
     "time",
     "lat",
     "lon",
 )
+
 COMPULSORY_COLUMNS = {
     "talk",
     "salinity",
 } | set(DF_INDEX_COLUMNS)
+
 SALINITY_BIN_EDGES = (
     0,
     32,
@@ -57,7 +63,6 @@ ESTIMATORS = {
     "CatBoost": catboost.CatBoostRegressor,
     "LightGBM": lightgbm.LGBMRegressor,
 }
-
 
 @dataclass
 class ModelCVParams:
@@ -77,33 +82,33 @@ class ModelSelectionConfig:
     salinity_bins: tuple[float, ...] = SALINITY_BIN_EDGES
     salinity_name: str = "salinity"
     salinity_norm_value: float = 34.5
-
-
+    
+    
 def main():
-
-    config_fname = ROOT / "scripts/cv_example_config.yaml"
-    config = load_config(config_fname)
+    
+    config_path = ROOT / "scripts/{CONFIG_FNAME}"
+    config = load_config(config_path)
     data_raw = load_data()
-
+    
     # IDEA: consider removing outliers or computing a weighting for these outliers
     data = preprocess_data(data_raw, config)
 
     # NOTE: This is a bit messy and could be neater in a function, but for now, OK
-    train_test_splitter = get_splits_by_expocode_salinity_bin_based(data)
-    idx_train, idx_test = train_test_splitter[0]
-    train = data.iloc[idx_train]
-    test = data.iloc[idx_test]
-
-    train_x = train.drop(columns=[config.yname_target])
-    train_y = train[config.yname_target]
-    test_x = test.drop(columns=[config.yname_target])
-    test_y = test[config.yname_target]
-
-    cv_splitter = get_splits_by_expocode_salinity_bin_based(train)
+    
+    train_df, test_df = get_train_test_split_by_expocode_salinity_bin_based(data)
+    cv_splitter = get_splits_by_expocode_salinity_bin_based(train_df) 
+    
+    train_x = train_df.drop(columns=[config.yname_target])
+    train_y = train_df[config.yname_target]
+    
+    # test_x = test_df.drop(columns=[config.yname_target])
+    # test_y = test_df[config.yname_target]
 
     cv_models = ()
     cv_results = ()
+    
     for model_cv_params in config.params:
+        
         cv_model = train_model(
             train_x,
             train_y,
@@ -113,7 +118,7 @@ def main():
             verbose=CV_VERBOSITY,
         )
 
-        # TODO: Impliment implement scoring on test set - here, again, straitifying by salinity bin might not be the best idea
+        # TODO: Implement scoring on test set - here, again, stratifying by salinity bin might not be the best idea
 
         save_cv_model(cv_model, model_cv_params.model_name)
         cv_result = extract_cv_results(cv_model)
@@ -123,6 +128,7 @@ def main():
 
     cv_results_combined = combine_cv_results(cv_results)
     logger.info(f"Combined CV results: \n{cv_results_combined.T.to_markdown()}")
+    
     # what do we do with the results
     # https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GridSearchCV.html
 
@@ -146,6 +152,7 @@ def load_config(fname_config_yaml: str | Path) -> ModelSelectionConfig:
 
 
 def load_data(compulsory_columns: set[str] = COMPULSORY_COLUMNS) -> pd.DataFrame:
+    
     """
     Loads the training data from a parquet file
 
@@ -162,11 +169,13 @@ def load_data(compulsory_columns: set[str] = COMPULSORY_COLUMNS) -> pd.DataFrame
     pd.DataFrame
         The training data as a pandas dataframe
     """
+    
     data_path = str(DATA_PATH)
 
     logger.info(f"Loading data from {data_path.format(y='YYYY')} for years 1982-2021")
     data = pd.concat([pd.read_parquet(data_path.format(y=y)) for y in range(1982, 2022)])
 
+    # Check that the compulsory columns are present in the data
     columns = data.columns.intersection(compulsory_columns)
 
     if len(columns) < len(compulsory_columns):
@@ -178,6 +187,7 @@ def load_data(compulsory_columns: set[str] = COMPULSORY_COLUMNS) -> pd.DataFrame
 
 
 def preprocess_data(df: pd.DataFrame, config: ModelSelectionConfig) -> pd.DataFrame:
+    
     """
     Select columns, engineer features, bin salinity
 
@@ -193,20 +203,23 @@ def preprocess_data(df: pd.DataFrame, config: ModelSelectionConfig) -> pd.DataFr
     pd.DataFrame
         The preprocessed training df
     """
-    index_columns = DF_INDEX_COLUMNS
 
-    keep_cols = set(config.xname_features + [config.yname_target]).union(COMPULSORY_COLUMNS)
-
+    # salinity binning
     salinity_bins = config.salinity_bins
     salinity = df[config.salinity_name]
-    salt_norm_value = config.salinity_norm_value
-
     df["salinity_bin"] = salinity_binning(salinity, bins=salinity_bins)
+    
+    # alkalinity normalization
+    salt_norm_value = config.salinity_norm_value
     df["talk_normalized"] = normalize_alkalinity(df["talk"], salinity, salt_norm_value)
 
+    # set quadruple index 
+    index_columns = DF_INDEX_COLUMNS
     index_columns = list(DF_INDEX_COLUMNS + ("salinity_bin",))
     df = df.set_index(index_columns)
 
+    # select columns and drop rows with missing values in the selected columns
+    keep_cols = set(config.xname_features + [config.yname_target]).union(COMPULSORY_COLUMNS)
     valid_columns = list(keep_cols - set(index_columns))
     df = df[valid_columns].dropna()
 
@@ -232,18 +245,38 @@ def normalize_alkalinity(
 def get_splits_by_expocode_salinity_bin_based(
     data: pd.DataFrame, random_state: int = 42, n_folds: int = 5
 ) -> list[tuple[np.ndarray, np.ndarray]]:
+    
     index = data.index.to_frame()
 
     grouper = index["expocode"]
     stratifier = index["salinity_bin"]
 
+    #TODO:verify how the shuffle affects stratification and grouping
+    # PROBLEM: default random_state is 42, so shuffle will always be True.
+    
     shuffle = False if random_state is None else True  # if random state provided, then True
-    splitter = StratifiedGroupKFold(n_splits=n_folds, shuffle=shuffle, random_state=random_state)
+    #splitter = StratifiedGroupKFold(n_splits=n_folds, shuffle=shuffle, random_state=random_state)
+    splitter = StratifiedGroupKFold(n_splits=n_folds)
 
     splits = splitter.split(data, y=stratifier, groups=grouper)
 
     # return a list so that we can pickle the CV splitter later
     return list(splits)
+
+def get_train_test_split_by_expocode_salinity_bin_based(
+    data: pd.DataFrame, random_state: int = 42) -> tuple[pd.DataFrame, pd.DataFrame]:
+
+    # Generate a 5-fold StratifiedGroupKFold, yielding a 20% validation and 80% train distribution in each of the 5 folds
+    train_test_splitter = get_splits_by_expocode_salinity_bin_based(data, random_state=random_state)
+    
+    # only take the first fold instance to generate our train-test split according to its train-validation (80:20) distribution 
+    idx_train, idx_test = train_test_splitter[0]
+    
+    # generate train and test dfs according to the generated indices
+    train = data.iloc[idx_train]
+    test = data.iloc[idx_test]
+
+    return train, test
 
 
 def train_model(
@@ -253,6 +286,7 @@ def train_model(
     model_cv_params: ModelCVParams,
     **kwargs,
 ) -> GridSearchCV:
+    
     logger.info(f"Training model with parameters: \n{model_cv_params}")
     logger.debug(f"Training data shapes: train_x = {train_x.shape}, train_y = {train_y.shape}")
     logger.debug(f"Splitter: \n{splitter}")
@@ -270,7 +304,7 @@ def train_model(
         cv=splitter,
         **props,
     )
-
+    
     grid_search.fit(train_x, train_y)
 
     logger.success(f"Finished training model {model_cv_params.model_name}")
