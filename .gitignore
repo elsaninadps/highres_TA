@@ -9,6 +9,7 @@ outputs/
 data_source/
 trained_models/
 models/
+*.png
 
 # Virtual environments
 .venv

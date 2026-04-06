@@ -65,6 +65,12 @@ ESTIMATORS = {
     "LightGBM": lightgbm.LGBMRegressor,
 }
 
+ESTIMATORS_COLORS = {
+    "RandomForestRegressor": 'blue', 
+    "CatBoostRegressor": 'orange',
+    "LGBMRegressor": 'green',
+}
+
 @dataclass
 class ModelCVParams:
     model_name: ESTIMATOR_NAMES
@@ -87,7 +93,7 @@ class ModelSelectionConfig:
     
 def main():
     
-    config_path = ROOT / "scripts/{CONFIG_FNAME}"
+    config_path = ROOT / f"scripts/{CONFIG_FNAME}"
     config = load_config(config_path)
     data_raw = load_data()
     
@@ -107,6 +113,9 @@ def main():
 
     cv_models = ()
     cv_results = ()
+    best_cv_results = ()
+    models_labels = [model_cv_params.model_name for model_cv_params in config.params]
+    logger.info(f"Models to train: {models_labels}")
     
     for model_cv_params in config.params:
         
@@ -121,16 +130,28 @@ def main():
 
         # TODO: Implement scoring on test set - here, again, stratifying by salinity bin might not be the best idea
 
+
         save_cv_model(cv_model, model_cv_params.model_name)
         cv_result = extract_cv_results(cv_model)
-
+        
         cv_models += (cv_model,)
         cv_results += (cv_result,)
+        best_cv_results += (extract_best_model_cohort(cv_result,ranks_to_select=2),)
         
-    boxplot(config, cv_results)
+    boxplot_comparison(config, cv_results, best_cv_results, models_labels, title = 'CV results comparison') 
+    #boxplot_comparison(config, best_cv_results, models_labels, title = 'Best models cohort CV results comparison')
 
     cv_results_combined = combine_cv_results(cv_results)
-    logger.info(f"Combined CV results: \n{cv_results_combined.T.to_markdown()}")
+    best_cv_results_combined = combine_best_cv_results(best_cv_results)
+    logger.info(f"Best CV results combined: \n{best_cv_results_combined.T.to_markdown()}")
+    
+    
+    
+    best_scores_per_fold_comparison(config, best_cv_results_combined, title = 'Best CV results comparison')   
+    
+    
+    
+
     
     # what do we do with the results
     # https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GridSearchCV.html
@@ -332,12 +353,31 @@ def extract_cv_results(cv_model: GridSearchCV) -> pd.DataFrame:
     logger.debug(f"Extracted CV results: \n{results.head(15).T}")
     return results
 
+def extract_best_model_cohort(model_cv_result, ranks_to_select: int = 1) -> pd.DataFrame:
+
+    best_indexes = model_cv_result.nsmallest(ranks_to_select, f"rank_test_{CV_SCORING_METRICS[0]}")
+    best_cohort = model_cv_result.loc[best_indexes.index].reset_index(drop=True)
+    
+    best_cohort['submodel_name'] = best_cohort['model_name'] + "_" + best_cohort[f'rank_test_{CV_SCORING_METRICS[0]}'].astype(str)
+    best_cohort = best_cohort.set_index("submodel_name") 
+    best_cohort['rank_in_cohort'] = best_cohort[f'rank_test_{CV_SCORING_METRICS[0]}'] 
+
+    logger.debug(f"Selected {ranks_to_select} best CV cohort for model {model_cv_result['model_name'].iloc[0]}: \n{best_cohort.T.to_markdown()}")
+
+    return best_cohort
 
 def combine_cv_results(cv_results: Iterable[pd.DataFrame]) -> pd.DataFrame:
     combined_results = pd.concat(cv_results, ignore_index=True)
     logger.debug(f"Combined CV results: \n{combined_results.head(15).T}")
     return combined_results
 
+    
+def combine_best_cv_results(best_cv_results: Iterable[pd.DataFrame]) -> pd.DataFrame:
+    
+    #logger.info(f"Amount of best CV results to combine: \n{len(list(best_cv_results))}")
+    combined_best_results = pd.concat(best_cv_results, ignore_index=False)
+    logger.info(f"Combined CV results: \n{combined_best_results.T.to_markdown()}")
+    return combined_best_results
 
 def failsafe_checks():
 
@@ -349,63 +389,95 @@ def failsafe_checks():
     )
 
 
-if __name__ == "__main__":
-    failsafe_checks()
-    main()
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def boxplot(config, cv_results):
-    
+def boxplot_comparison(config, cv_results, best_cohort_results, models_names, title = 'CV results boxplot comparison'):
     
     nplots = len(CV_SCORING_METRICS)
-    ncols = 2
-    nrows = nplots // ncols + nplots % ncols
-    fig, axes = plt.subplots(n_rows, ncols, figsize=(base_size[0]*ncols, base_size[1]*n_rows))
+    ncols = 1
+    fig, axes = plt.subplots(nplots, ncols, figsize=(20, 4*nplots))
     axes = axes.flatten()
     
-    model_labels = []
-    nfolds = len(config.num_cv_folds)
+    nfolds = config.num_cv_folds
     
-    for model_cv_result in cv_results:
+    
+    # models_labels = []
+    # for model_name in models_names:
+    #     models_labels.append(f"{model_name}")
+    #     models_labels.append(f"Best {model_name} cohort")
+     
+    for i, metric in enumerate(CV_SCORING_METRICS):   
         
-        scores_per_metric = concatenate_all_folds_scores_per_metric(nfolds, model_cv_result)
+        boxplot_list = []
+        labels_list = []
         
-        model_name = model_cv_result.T['model_name'].unique()
-        model_labels += model_name
-    
-        for i, metric in enumerate(CV_SCORING_METRICS):
-            axes[i].boxplot(scores_per_metric[metric], tick_labels = model_labels)
-            axes[i].set_ylabel(metric)
+        for model_results, best_cohort_result in zip(cv_results, best_cohort_results):
         
-        plt.tight_layout()
-        plt.show();
+            scores_per_metric = concatenate_all_folds_scores_per_metric(nfolds, model_results, metric) 
+            model_label= model_results['model_name'].iloc[0]
+            best_scores_per_metric =concatenate_all_folds_scores_per_metric(nfolds, best_cohort_result, metric)
+            best_cohort_label = f"Best {best_cohort_result['model_name'].iloc[0]} cohort"
+            
+            labels_list.append(model_label)
+            labels_list.append(best_cohort_label)
+            
+            boxplot_list.append(scores_per_metric)
+            boxplot_list.append(best_scores_per_metric)
+            
+
+        #scores_per_metric = [concatenate_all_folds_scores_per_metric(nfolds, model_results, metric) for model_results in cv_results]
+        #best_scores_per_metric =[concatenate_all_folds_scores_per_metric(nfolds, model_best_cohort, metric) for model_best_cohort in best_cohort_results]
+        
+        #axes[i].boxplot(scores_per_metric, tick_labels = models_labels)
+        #axes[i].boxplot(best_scores_per_metric, tick_labels = models_labels)
+        axes[i].boxplot(boxplot_list, labels=labels_list)
+        axes[i].set_ylabel(metric)
     
+    plt.tight_layout()
+    fig.savefig(f"{title.replace(' ', '_')}.png")
     
+def best_scores_per_fold_comparison(config, best_cv_results, title = 'Best models cohort CV results comparison'):
+    
+    nplots = len(CV_SCORING_METRICS)
+    fig, axes = plt.subplots(nplots, 1, figsize=(10, 3*nplots))
+    axes = axes.flatten()
+    
+    nfolds = config.num_cv_folds
+    folds = np.linspace(0, nfolds-1, nfolds).astype(int)
+    
+    rank_marker = {'1': 's', '2': 'o', '3': 'D', '4': 'x', '5': '*'}  # different marker for each rank in cohort
+    selected_ranks = best_cv_results.rank_in_cohort.unique()
+
+    for model in list(best_cv_results.model_name.unique()):
+        
+        color = ESTIMATORS_COLORS[model]
+            
+        for kth_rank in selected_ranks:
+            
+            kth_best_cv_result = best_cv_results[(best_cv_results.model_name == model) & (best_cv_results.rank_in_cohort == kth_rank)]
+            marker_type = rank_marker[str(kth_rank)]
+    
+            for i, metric in enumerate(CV_SCORING_METRICS):
+                
+                logger.debug(f"{kth_best_cv_result.T.to_markdown()}")  # debug print the selected best CV cohort for this model and rank
+                kth_scores_per_metric = [kth_best_cv_result[f"split{y}_test_{metric}"] for y in range(0, nfolds)]
+                kth_scores_per_metric = pd.DataFrame(kth_scores_per_metric, index=folds)  
+                kth_scores_per_metric.index.name = 'fold'
+                
+                
+                kth_scores_per_metric.plot(marker=marker_type, color=color, linestyle=':', ax=axes[i], legend=False)
+                #axes[i].scatter(x = folds, y = kth_scores_per_metric, marker=marker_type, label = label, color=color)
+                #axes[i].axhline(y = best_cv_results.loc[model, f"mean_test_{metric}"], linestyle='--', color =color,label = f"{model} mean")
+                axes[i].set_ylabel(metric)
+                axes[i].set_xlabel('fold')
+                axes[i].legend()
+        
+    fig.suptitle(title)
+    plt.tight_layout()
+    fig.savefig(f"{title.replace(' ', '_')}.png")
             
             
-def concatenate_all_folds_scores_per_metric(nfolds, model_cv_result):
-    results_in_cols = model_cv_result.T
-    
-    model_scores = pd.DataFrame()
-    for metric in CV_SCORING_METRICS:        
-        model_scores[metric]= pd.concat([results_in_cols[f"split0_test_{metric}"] for y in range(1, nfolds)])
-        
-    return model_scores
+def concatenate_all_folds_scores_per_metric(nfolds, model_cv_result, metric):
+       return pd.concat([model_cv_result[f"split{y}_test_{metric}"] for y in range(0, nfolds)], ignore_index=True)
 
 
 def fit_best_estimator_on_test(cv_models, test_x, test_y):
@@ -421,3 +493,7 @@ def fit_best_estimator_on_test(cv_models, test_x, test_y):
         
         
 # TODO: do cv on best estimator and on test set, and do visualization on those ones.
+
+if __name__ == "__main__":
+    failsafe_checks()
+    main()
