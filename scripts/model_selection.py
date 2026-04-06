@@ -12,6 +12,7 @@ import pandas as pd
 from loguru import logger
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold
+import matplotlib.pyplot as plt
 
 ModelSklearnAPI = (
     Type[RandomForestRegressor] | Type[catboost.CatBoostRegressor] | Type[lightgbm.LGBMRegressor]
@@ -125,6 +126,8 @@ def main():
 
         cv_models += (cv_model,)
         cv_results += (cv_result,)
+        
+    boxplot(config, cv_results)
 
     cv_results_combined = combine_cv_results(cv_results)
     logger.info(f"Combined CV results: \n{cv_results_combined.T.to_markdown()}")
@@ -349,3 +352,72 @@ def failsafe_checks():
 if __name__ == "__main__":
     failsafe_checks()
     main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def boxplot(config, cv_results):
+    
+    
+    nplots = len(CV_SCORING_METRICS)
+    ncols = 2
+    nrows = nplots // ncols + nplots % ncols
+    fig, axes = plt.subplots(n_rows, ncols, figsize=(base_size[0]*ncols, base_size[1]*n_rows))
+    axes = axes.flatten()
+    
+    model_labels = []
+    nfolds = len(config.num_cv_folds)
+    
+    for model_cv_result in cv_results:
+        
+        scores_per_metric = concatenate_all_folds_scores_per_metric(nfolds, model_cv_result)
+        
+        model_name = model_cv_result.T['model_name'].unique()
+        model_labels += model_name
+    
+        for i, metric in enumerate(CV_SCORING_METRICS):
+            axes[i].boxplot(scores_per_metric[metric], tick_labels = model_labels)
+            axes[i].set_ylabel(metric)
+        
+        plt.tight_layout()
+        plt.show();
+    
+    
+            
+            
+def concatenate_all_folds_scores_per_metric(nfolds, model_cv_result):
+    results_in_cols = model_cv_result.T
+    
+    model_scores = pd.DataFrame()
+    for metric in CV_SCORING_METRICS:        
+        model_scores[metric]= pd.concat([results_in_cols[f"split0_test_{metric}"] for y in range(1, nfolds)])
+        
+    return model_scores
+
+
+def fit_best_estimator_on_test(cv_models, test_x, test_y):
+    
+    for cv_model in cv_models:
+        best_estimator = cv_model.best_estimator_
+        test_score = best_estimator.score(test_x, test_y)
+        
+        residuals = test_y - best_estimator.predict(test_x)
+        
+        
+        logger.info(f"Test score for model {cv_model.estimator.__class__.__name__}: {test_score}")
+        
+        
+# TODO: do cv on best estimator and on test set, and do visualization on those ones.
