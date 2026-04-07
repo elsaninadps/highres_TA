@@ -35,6 +35,16 @@ CV_SCORING_METRICS = [
     "r2",
 ]
 
+METRICS_PLOT_LABELS = {
+    "neg_root_mean_squared_error": "Neg RMSE",  
+    "neg_median_absolute_error": "Neg MedAE",
+    "neg_mean_absolute_error": "Neg MAE",
+    "neg_mean_absolute_percentage_error": "Neg MAPE",
+    "r2": "R²",
+    "fit_time": "Fit Time (s)",
+    "score_time": "Score Time (s)"
+}
+
 DF_INDEX_COLUMNS = (
     "expocode",
     "time",
@@ -143,7 +153,8 @@ def main():
 
     cv_results_combined = combine_cv_results(cv_results)
     best_cv_results_combined = combine_best_cv_results(best_cv_results)
-    logger.info(f"Best CV results combined: \n{best_cv_results_combined.T.to_markdown()}")
+    logger.debug(f"Best CV results combined: \n{best_cv_results_combined.T.to_markdown()}")
+    publish_best_cohort_mean_scores(best_cv_results_combined)
     
     
     
@@ -480,19 +491,67 @@ def concatenate_all_folds_scores_per_metric(nfolds, model_cv_result, metric):
        return pd.concat([model_cv_result[f"split{y}_test_{metric}"] for y in range(0, nfolds)], ignore_index=True)
 
 
-def fit_best_estimator_on_test(cv_models, test_x, test_y):
+def extract_best_cohort_mean_scores(best_cv_results_combined):
     
-    for cv_model in cv_models:
-        best_estimator = cv_model.best_estimator_
-        test_score = best_estimator.score(test_x, test_y)
+    keep = [f"mean_test_{metric}" for metric in CV_SCORING_METRICS]
+    [keep.append(f"std_test_{metric}")  for metric in CV_SCORING_METRICS]
+    keep = keep + ['mean_fit_time','std_fit_time', 'mean_score_time', 'std_score_time']
+    
+
+    best_cohort_mean_scores = best_cv_results_combined[keep]
+
+    for metric in CV_SCORING_METRICS:
+        metric_label = METRICS_PLOT_LABELS.get(metric, metric)
+        best_cohort_mean_scores[metric_label] = (best_cohort_mean_scores['mean_test_' + metric].round(4).astype(str) 
+                                                 + " ± " + best_cohort_mean_scores['std_test_' + metric].round(4).astype(str)
+        )
+    
+    for time_metric in ['fit_time', 'score_time']:
         
-        residuals = test_y - best_estimator.predict(test_x)
+        metric_label = METRICS_PLOT_LABELS.get(time_metric, time_metric)
+        best_cohort_mean_scores[metric_label] = (
+            best_cohort_mean_scores['mean_' + time_metric].round(2).astype(str) 
+            + " ± " + best_cohort_mean_scores['std_' + time_metric].round(2).astype(str)
+        )
+    
+    best_cohort_mean_scores = best_cohort_mean_scores.drop(columns = keep)  # drop the original mean and std columns, keep only the formatted ones
+    
+    logger.info(f"Best cohort mean scores: \n{best_cohort_mean_scores.T.to_markdown()}")
+    
+    return best_cohort_mean_scores
+
+def publish_best_cohort_mean_scores(best_cv_results_combined):
+    
+    best_cohort_mean_scores = extract_best_cohort_mean_scores(best_cv_results_combined)
+    
+    # publish a table plot of the best cohort mean scores with metrics as columns and models as rows and save it as a png
+    fig, ax = plt.subplots(figsize=(15, 4))
+    ax.axis('tight')
+    ax.axis('off')
+    table = ax.table(cellText=best_cohort_mean_scores.values, colLabels=best_cohort_mean_scores.columns, rowLabels=best_cohort_mean_scores.index, cellLoc='center', loc='center')
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1.2, 1.5)
+    
+    plt.title("Best Cohort CV Mean Scores", fontsize=14)
+    plt.savefig(ROOT / f"best_cohort_mean_scores.png", bbox_inches='tight')
+    
+    logger.success(f"Saved best cohort mean scores to ROOT / best_cohort_mean_scores.png")
+    
+
+# def fit_best_estimator_on_test(cv_models, test_x, test_y):
+    
+#     for cv_model in cv_models:
+#         best_estimator = cv_model.best_estimator_
+#         test_score = best_estimator.score(test_x, test_y)
+        
+#         residuals = test_y - best_estimator.predict(test_x)
         
         
-        logger.info(f"Test score for model {cv_model.estimator.__class__.__name__}: {test_score}")
+#         logger.info(f"Test score for model {cv_model.estimator.__class__.__name__}: {test_score}")
         
         
-# TODO: do cv on best estimator and on test set, and do visualization on those ones.
+# # TODO: do cv on best estimator and on test set, and do visualization on those ones.
 
 if __name__ == "__main__":
     failsafe_checks()

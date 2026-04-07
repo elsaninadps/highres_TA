@@ -14,17 +14,17 @@ params:
   default_kwargs: { train_dir: models/catboost_cv_train_info }
   param_grid:
     n_estimators: [10, 20, 30]
-    depth: [ 5, 10, 16 ]
-    border_count: [ 250, 512, 700 ]
+    depth: [ 5]
+    border_count: [ 512 ]
 
-- model_name: "LightGBM"
-  param_grid:
-    n_estimators: [ 5, 10, 20]
-    num_leaves: [ 32 ]
-    min_child_samples: [ 10 ]
+# - model_name: "LightGBM"
+#   param_grid:
+#     n_estimators: [ 5, 10]
+#     num_leaves: [ 32 ]
+#     min_child_samples: [ 10 ]
 
 - model_name: "RandomForest"
   param_grid:
     n_estimators: [ 10, 20, 30 ]
-    max_depth: [ 10, 20, 40 ]
-    min_samples_leaf: [ 5, 10, 30 ]
+    max_depth: [ 10]
+    min_samples_leaf: [ 5 ]
