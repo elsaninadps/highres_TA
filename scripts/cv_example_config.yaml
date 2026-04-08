@@ -15,7 +15,7 @@ params:
 - model_name: "CatBoost"
   #default_kwargs: { train_dir: models/catboost_cv_train_info }
   param_grid:
-    n_estimators: [10, 20, 30, 10000]
+    n_estimators: [10, 20, 30]
     depth: [ 5]
     border_count: [ 512 ]
     early_stopping_rounds: [ 20 ]

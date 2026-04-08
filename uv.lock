@@ -172,6 +172,27 @@ wheels = [
 ]
 
 [[package]]
+name = "click"
+version = "8.3.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/57/75/31212c6bf2503fdf920d87fee5d7a86a2e3bcf444984126f13d8e4016804/click-8.3.2.tar.gz", hash = "sha256:14162b8b3b3550a7d479eafa77dfd3c38d9dc8951f6f69c78913a8f9a7540fd5", size = 302856, upload-time = "2026-04-03T19:14:45.118Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e4/20/71885d8b97d4f3dde17b1fdb92dbd4908b00541c5a3379787137285f602e/click-8.3.2-py3-none-any.whl", hash = "sha256:1924d2c27c5653561cd2cae4548d1406039cb79b858b747cfea24924bbc1616d", size = 108379, upload-time = "2026-04-03T19:14:43.505Z" },
+]
+
+[[package]]
+name = "cloudpickle"
+version = "3.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/27/fb/576f067976d320f5f0114a8d9fa1215425441bb35627b1993e5afd8111e5/cloudpickle-3.1.2.tar.gz", hash = "sha256:7fda9eb655c9c230dab534f1983763de5835249750e85fbcef43aaa30a9a2414", size = 22330, upload-time = "2025-11-03T09:25:26.604Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/39/799be3f2f0f38cc727ee3b4f1445fe6d5e4133064ec2e4115069418a5bb6/cloudpickle-3.1.2-py3-none-any.whl", hash = "sha256:9acb47f6afd73f60dc1df93bb801b472f05ff42fa6c84167d25cb206be1fbf4a", size = 22228, upload-time = "2025-11-03T09:25:25.534Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -281,6 +302,25 @@ wheels = [
 ]
 
 [[package]]
+name = "dask"
+version = "2026.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "cloudpickle" },
+    { name = "fsspec" },
+    { name = "importlib-metadata", marker = "python_full_version < '3.12'" },
+    { name = "packaging" },
+    { name = "partd" },
+    { name = "pyyaml" },
+    { name = "toolz" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d7/2a/5d8cc1579590af86576dde890254440e478c7174b93a02095ecfc2e6ba38/dask-2026.3.0.tar.gz", hash = "sha256:f7d96c8274e8a900d217c1ff6ea8d1bbf0b4c2c21e74a409644498d925eb8f85", size = 11000710, upload-time = "2026-03-18T07:10:14.945Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4a/f3/00bb1e867fba351e2d784170955713bee200c43ea306c59f30bd7e748192/dask-2026.3.0-py3-none-any.whl", hash = "sha256:be614b9242b0b38288060fb2d7696125946469c98a1c30e174883fd199e0428d", size = 1485630, upload-time = "2026-03-18T07:10:12.832Z" },
+]
+
+[[package]]
 name = "debugpy"
 version = "1.8.20"
 source = { registry = "https://pypi.org/simple" }
@@ -382,6 +422,15 @@ wheels = [
 ]
 
 [[package]]
+name = "fsspec"
+version = "2026.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e1/cf/b50ddf667c15276a9ab15a70ef5f257564de271957933ffea49d2cdbcdfb/fsspec-2026.3.0.tar.gz", hash = "sha256:1ee6a0e28677557f8c2f994e3eea77db6392b4de9cd1f5d7a9e87a0ae9d01b41", size = 313547, upload-time = "2026-03-27T19:11:14.892Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d5/1f/5f4a3cd9e4440e9d9bc78ad0a91a1c8d46b4d429d5239ebe6793c9fe5c41/fsspec-2026.3.0-py3-none-any.whl", hash = "sha256:d2ceafaad1b3457968ed14efa28798162f1638dbb5d2a6868a2db002a5ee39a4", size = 202595, upload-time = "2026-03-27T19:11:13.595Z" },
+]
+
+[[package]]
 name = "graphviz"
 version = "0.21"
 source = { registry = "https://pypi.org/simple" }
@@ -397,6 +446,7 @@ source = { editable = "." }
 dependencies = [
     { name = "cartopy" },
     { name = "catboost" },
+    { name = "dask" },
     { name = "dill" },
     { name = "ipykernel" },
     { name = "jinja2" },
@@ -418,6 +468,7 @@ dependencies = [
 requires-dist = [
     { name = "cartopy", specifier = ">=0.25.0" },
     { name = "catboost", specifier = ">=1.2.10" },
+    { name = "dask", specifier = ">=2026.3.0" },
     { name = "dill", specifier = ">=0.4.1" },
     { name = "ipykernel", specifier = ">=7.1.0" },
     { name = "jinja2", specifier = ">=3.1.6" },
@@ -433,6 +484,18 @@ requires-dist = [
     { name = "seaborn", specifier = ">=0.13.2" },
     { name = "tabulate", specifier = ">=0.10.0" },
     { name = "xarray", specifier = ">=2026.1.0" },
+]
+
+[[package]]
+name = "importlib-metadata"
+version = "9.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "zipp", marker = "python_full_version < '3.12'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a9/01/15bb152d77b21318514a96f43af312635eb2500c96b55398d020c93d86ea/importlib_metadata-9.0.0.tar.gz", hash = "sha256:a4f57ab599e6a2e3016d7595cfd72eb4661a5106e787a95bcc90c7105b831efc", size = 56405, upload-time = "2026-03-20T06:42:56.999Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/38/3d/2d244233ac4f76e38533cfcb2991c9eb4c7bf688ae0a036d30725b8faafe/importlib_metadata-9.0.0-py3-none-any.whl", hash = "sha256:2d21d1cc5a017bd0559e36150c21c830ab1dc304dedd1b7ea85d20f45ef3edd7", size = 27789, upload-time = "2026-03-20T06:42:55.665Z" },
 ]
 
 [[package]]
@@ -660,6 +723,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/64/41/4fbde2c3d29e25ee7c41d87df2f2e5eda65b431ee154d4d462c31041846c/lightgbm-4.6.0-py3-none-manylinux2014_aarch64.whl", hash = "sha256:4d68712bbd2b57a0b14390cbf9376c1d5ed773fa2e71e099cac588703b590336", size = 3454567, upload-time = "2025-02-15T04:02:56.443Z" },
     { url = "https://files.pythonhosted.org/packages/42/86/dabda8fbcb1b00bcfb0003c3776e8ade1aa7b413dff0a2c08f457dace22f/lightgbm-4.6.0-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:cb19b5afea55b5b61cbb2131095f50538bd608a00655f23ad5d25ae3e3bf1c8d", size = 3569831, upload-time = "2025-02-15T04:02:58.925Z" },
     { url = "https://files.pythonhosted.org/packages/5e/23/f8b28ca248bb629b9e08f877dd2965d1994e1674a03d67cd10c5246da248/lightgbm-4.6.0-py3-none-win_amd64.whl", hash = "sha256:37089ee95664b6550a7189d887dbf098e3eadab03537e411f52c63c121e3ba4b", size = 1451509, upload-time = "2025-02-15T04:03:01.515Z" },
+]
+
+[[package]]
+name = "locket"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/2f/83/97b29fe05cb6ae28d2dbd30b81e2e402a3eed5f460c26e9eaa5895ceacf5/locket-1.0.0.tar.gz", hash = "sha256:5c0d4c052a8bbbf750e056a8e65ccd309086f4f0f18a2eac306a8dfa4112a632", size = 4350, upload-time = "2022-04-20T22:04:44.312Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/db/bc/83e112abc66cd466c6b83f99118035867cecd41802f8d044638aa78a106e/locket-1.0.0-py2.py3-none-any.whl", hash = "sha256:b6c819a722f7b6bd955b80781788e4a66a55628b858d347536b7e81325a3a5e3", size = 4398, upload-time = "2022-04-20T22:04:42.23Z" },
 ]
 
 [[package]]
@@ -1007,6 +1079,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d4/de/53e0bcf53d13e005bd8c92e7855142494f41171b34c2536b86187474184d/parso-0.8.5.tar.gz", hash = "sha256:034d7354a9a018bdce352f48b2a8a450f05e9d6ee85db84764e9b6bd96dafe5a", size = 401205, upload-time = "2025-08-23T15:15:28.028Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/16/32/f8e3c85d1d5250232a5d3477a2a28cc291968ff175caeadaf3cc19ce0e4a/parso-0.8.5-py2.py3-none-any.whl", hash = "sha256:646204b5ee239c396d040b90f9e272e9a8017c630092bf59980beb62fd033887", size = 106668, upload-time = "2025-08-23T15:15:25.663Z" },
+]
+
+[[package]]
+name = "partd"
+version = "1.4.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "locket" },
+    { name = "toolz" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b2/3a/3f06f34820a31257ddcabdfafc2672c5816be79c7e353b02c1f318daa7d4/partd-1.4.2.tar.gz", hash = "sha256:d022c33afbdc8405c226621b015e8067888173d85f7f5ecebb3cafed9a20f02c", size = 21029, upload-time = "2024-05-06T19:51:41.945Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/71/e7/40fb618334dcdf7c5a316c0e7343c5cd82d3d866edc100d98e29bc945ecd/partd-1.4.2-py3-none-any.whl", hash = "sha256:978e4ac767ec4ba5b86c6eaa52e5a2a3bc748a2ca839e8cc798f1cc6ce6efb0f", size = 18905, upload-time = "2024-05-06T19:51:39.271Z" },
 ]
 
 [[package]]
@@ -1709,6 +1794,15 @@ wheels = [
 ]
 
 [[package]]
+name = "toolz"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/11/d6/114b492226588d6ff54579d95847662fc69196bdeec318eb45393b24c192/toolz-1.1.0.tar.gz", hash = "sha256:27a5c770d068c110d9ed9323f24f1543e83b2f300a687b7891c1a6d56b697b5b", size = 52613, upload-time = "2025-10-17T04:03:21.661Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fb/12/5911ae3eeec47800503a238d971e51722ccea5feb8569b735184d5fcdbc0/toolz-1.1.0-py3-none-any.whl", hash = "sha256:15ccc861ac51c53696de0a5d6d4607f99c210739caf987b5d2054f3efed429d8", size = 58093, upload-time = "2025-10-17T04:03:20.435Z" },
+]
+
+[[package]]
 name = "tornado"
 version = "6.5.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1784,4 +1878,13 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f5/85/113ff1e2cde9e8a5b13c2f0ef4e9f5cd6ca3a036b6452f4dd523419289b5/xarray-2026.1.0.tar.gz", hash = "sha256:0c9814761f9d9a9545df37292d3fda89f83201f3e02ae0f09f03313d9cfdd5e2", size = 3107024, upload-time = "2026-01-28T17:49:03.822Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7d/8e/952a351c10df395d9bab850f611f4368834ae9104d6449049f5a49e00925/xarray-2026.1.0-py3-none-any.whl", hash = "sha256:5fcc03d3ed8dfb662aa254efe6cd65efc70014182bbc2126e4b90d291d970d41", size = 1403009, upload-time = "2026-01-28T17:49:01.538Z" },
+]
+
+[[package]]
+name = "zipp"
+version = "3.23.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e3/02/0f2892c661036d50ede074e376733dca2ae7c6eb617489437771209d4180/zipp-3.23.0.tar.gz", hash = "sha256:a07157588a12518c9d4034df3fbbee09c814741a33ff63c05fa29d26a2404166", size = 25547, upload-time = "2025-06-08T17:06:39.4Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2e/54/647ade08bf0db230bfea292f893923872fd20be6ac6f53b2b936ba839d75/zipp-3.23.0-py3-none-any.whl", hash = "sha256:071652d6115ed432f5ce1d34c336c0adfd6a884660d1e9712a256d3d3bd4b14e", size = 10276, upload-time = "2025-06-08T17:06:38.034Z" },
 ]

@@ -12,11 +12,12 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold
 import matplotlib.pyplot as plt
 
 ModelSklearnAPI = (
-    Type[RandomForestRegressor] | Type[catboost.CatBoostRegressor] | Type[lightgbm.LGBMRegressor]
+    Type[RandomForestRegressor] | Type[catboost.CatBoostRegressor] | Type[lightgbm.LGBMRegressor] | Type[LinearRegression]
 )
 
 CONFIG_FNAME = "cv_config_coarse_search.yaml"
@@ -34,7 +35,6 @@ CV_SCORING_METRICS = [
     "neg_root_mean_squared_error",
     "neg_median_absolute_error",
     "neg_mean_absolute_error",
-    "neg_mean_absolute_percentage_error",
     "r2",
 ]
 
@@ -44,7 +44,6 @@ METRICS_PLOT_LABELS = {
     "neg_root_mean_squared_error": "Neg RMSE",  
     "neg_median_absolute_error": "Neg MedAE",
     "neg_mean_absolute_error": "Neg MAE",
-    "neg_mean_absolute_percentage_error": "Neg MAPE",
     "r2": "R²",
     "fit_time": "Fit Time (s)",
     "score_time": "Score Time (s)"
@@ -73,17 +72,19 @@ SALINITY_BIN_EDGES = (
 logger.remove()
 logger.add(sys.stderr, level=LOGGING_LEVEL)
 
-ESTIMATOR_NAMES = Literal["RandomForest", "CatBoost", "LightGBM"]
+ESTIMATOR_NAMES = Literal[ "RandomForest", "CatBoost", "LightGBM", "LinearRegression" ]
 ESTIMATORS = {
     "RandomForest": RandomForestRegressor,
     "CatBoost": catboost.CatBoostRegressor,
     "LightGBM": lightgbm.LGBMRegressor,
+    "LinearRegression": LinearRegression
 }
 
 ESTIMATORS_COLORS = {
     "RandomForestRegressor": 'blue', 
     "CatBoostRegressor": 'orange',
     "LGBMRegressor": 'green',
+    "LinearRegression": 'red'
 }
 
 @dataclass
@@ -153,7 +154,7 @@ def main():
         cv_results += (cv_result,)
         best_cv_results += (extract_best_model_cohort(cv_result, ranks_to_select=config.num_best_models_cohort),)
         
-        #fit_best_estimator_on_test(cv_model, test_x, test_y)
+        fit_best_estimator_on_test(cv_model, test_x, test_y)
         
     boxplot_scores_distribution(cv_results, best_cv_results) 
 
@@ -253,6 +254,9 @@ def preprocess_data(df: pd.DataFrame, config: ModelSelectionConfig) -> pd.DataFr
     # alkalinity normalization
     salt_norm_value = config.salinity_norm_value
     df["talk_normalized"] = normalize_alkalinity(df["talk"], salinity, salt_norm_value)
+    
+    # filter outliers
+    df = filter_outliers(df, column="salinity", lower_abs=20, upper_abs=40)
 
     # set quadruple index 
     index_columns = DF_INDEX_COLUMNS
@@ -265,6 +269,15 @@ def preprocess_data(df: pd.DataFrame, config: ModelSelectionConfig) -> pd.DataFr
     df = df[valid_columns].dropna()
 
     logger.debug(f"Preprocessed data head: \n{df.head()}")
+
+    return df
+
+
+def filter_outliers(df: pd.DataFrame, column: str, lower_abs: float, upper_abs: float) -> pd.DataFrame:
+    if lower_abs is not None:
+        df = df[df[column] >= lower_abs]
+    if upper_abs is not None:
+        df = df[df[column] <= upper_abs]
 
     return df
 
@@ -337,7 +350,11 @@ def train_model(
         "refit": CV_SCORING_METRICS[0],
     } | kwargs
     # verbose is int otherwise, LightGBM fail
-    estimator = model_cv_params.model(verbose=0, **model_cv_params.default_kwargs)
+    #estimator = model_cv_params.model(verbose=0, **model_cv_params.default_kwargs)
+    default_params = model_cv_params.default_kwargs | {"verbose": 0}
+    if model_cv_params.model_name == "LinearRegression":
+        default_params.pop("verbose")
+    estimator = model_cv_params.model(**default_params)
 
     grid_search = GridSearchCV(
         estimator=estimator,
@@ -567,16 +584,41 @@ def publish_best_params_tables(combined_best_cv_results):
     
 
 def fit_best_estimator_on_test(cv_model, test_x, test_y):
+    
+    from sklearn.metrics import root_mean_squared_error, mean_absolute_error, r2_score, median_absolute_error
 
     best_estimator = cv_model.best_estimator_
-    score_sample = best_estimator.score_sample(test_x)
-    test_score = best_estimator.score(test_x, test_y)
+    test_score = cv_model.score(test_x, test_y)
     
-    #residuals = test_y - best_estimator.predict(test_x)
+    y_pred = best_estimator.predict(test_x)
     
-    logger.info(f"Test score for model {cv_model.estimator.__class__.__name__}: {test_score}")
-    logger.info(f"Test score per sample for model {cv_model.estimator.__class__.__name__}: {score_sample}")
+    # dataframe with scores on metrics from CV scoring metrics
     
+    scores = pd.DataFrame({
+        "root_mean_squared_error": [root_mean_squared_error(test_y, y_pred)],
+        "median_absolute_error": [median_absolute_error(test_y, y_pred)],
+        "mean_absolute_error": [mean_absolute_error(test_y, y_pred)],
+        "r2": [r2_score(test_y, y_pred)],
+    })
+    
+    publish_test_scores(scores, cv_model.estimator.__class__.__name__)
+    
+    logger.info(f"Test score for model {cv_model.estimator.__class__.__name__}: {scores.T.to_markdown()}")
+    #logger.info(f"Test score per sample for model {cv_model.estimator.__class__.__name__}: {score_sample}")
+    
+def publish_test_scores(scores, model_name: str):
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.axis('tight')
+    ax.axis('off')
+    table = ax.table(cellText=scores.values, colLabels=scores.columns, rowLabels=scores.index, cellLoc='center', loc='center')
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1.2, 1.5)
+    
+    plt.title("Test Scores of Best Estimator on Test Set", fontsize=14)
+    plt.savefig(SAVE_PATH / f"{model_name}_test_scores.png", bbox_inches='tight')
+    
+    logger.success(f"Saved test scores to {SAVE_PATH} / {model_name}_test_scores.png")
     
        
         
