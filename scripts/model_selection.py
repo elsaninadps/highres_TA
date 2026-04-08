@@ -2,6 +2,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Literal, Type
+import yaml
 
 import catboost
 import dotenv
@@ -18,7 +19,7 @@ ModelSklearnAPI = (
     Type[RandomForestRegressor] | Type[catboost.CatBoostRegressor] | Type[lightgbm.LGBMRegressor]
 )
 
-CONFIG_FNAME = "cv_example_config.yaml"
+CONFIG_FNAME = "cv_config_coarse_search.yaml"
 
 LOGGING_LEVEL = "INFO"
 CV_VERBOSITY = 3
@@ -26,6 +27,8 @@ N_CPUS = -1  # -1 = all available CPUs
 
 ROOT = Path(dotenv.find_dotenv("pyproject.toml")).parent
 DATA_PATH = ROOT / "data/training/GLODAPv2023-raw_collocated-{y}.pq"
+SAVE_PATH = ROOT/ "outputs/model_selection"
+
 
 CV_SCORING_METRICS = [
     "neg_root_mean_squared_error",
@@ -34,6 +37,8 @@ CV_SCORING_METRICS = [
     "neg_mean_absolute_percentage_error",
     "r2",
 ]
+
+NFOLDS = 0  # will be set later according to the config
 
 METRICS_PLOT_LABELS = {
     "neg_root_mean_squared_error": "Neg RMSE",  
@@ -95,6 +100,8 @@ class ModelSelectionConfig:
     yname_target: Literal["talk", "talk_normalized"]
     xname_features: list[str]
     num_cv_folds: int
+    num_best_models_cohort: int
+    save_path: str | Path
     params: list[ModelCVParams]
     salinity_bins: tuple[float, ...] = SALINITY_BIN_EDGES
     salinity_name: str = "salinity"
@@ -118,8 +125,8 @@ def main():
     train_x = train_df.drop(columns=[config.yname_target])
     train_y = train_df[config.yname_target]
     
-    # test_x = test_df.drop(columns=[config.yname_target])
-    # test_y = test_df[config.yname_target]
+    test_x = test_df.drop(columns=[config.yname_target])
+    test_y = test_df[config.yname_target]
 
     cv_models = ()
     cv_results = ()
@@ -138,38 +145,32 @@ def main():
             verbose=CV_VERBOSITY,
         )
 
-        # TODO: Implement scoring on test set - here, again, stratifying by salinity bin might not be the best idea
-
 
         save_cv_model(cv_model, model_cv_params.model_name)
         cv_result = extract_cv_results(cv_model)
         
         cv_models += (cv_model,)
         cv_results += (cv_result,)
-        best_cv_results += (extract_best_model_cohort(cv_result,ranks_to_select=2),)
+        best_cv_results += (extract_best_model_cohort(cv_result, ranks_to_select=config.num_best_models_cohort),)
         
-    boxplot_comparison(config, cv_results, best_cv_results, models_labels, title = 'CV results comparison') 
-    #boxplot_comparison(config, best_cv_results, models_labels, title = 'Best models cohort CV results comparison')
+        #fit_best_estimator_on_test(cv_model, test_x, test_y)
+        
+    boxplot_scores_distribution(cv_results, best_cv_results) 
 
     cv_results_combined = combine_cv_results(cv_results)
     best_cv_results_combined = combine_best_cv_results(best_cv_results)
-    logger.debug(f"Best CV results combined: \n{best_cv_results_combined.T.to_markdown()}")
+    
+    extract_best_params_tables(best_cv_results_combined)
+    best_scores_stability_plot(best_cv_results_combined)   
     publish_best_cohort_mean_scores(best_cv_results_combined)
-    
-    
-    
-    best_scores_per_fold_comparison(config, best_cv_results_combined, title = 'Best CV results comparison')   
-    
-    
-    
-
+    publish_best_params_tables(best_cv_results_combined)
     
     # what do we do with the results
     # https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GridSearchCV.html
 
 
 def load_config(fname_config_yaml: str | Path) -> ModelSelectionConfig:
-    import yaml
+    global SAVE_PATH, NFOLDS
 
     with open(fname_config_yaml, "r") as f:
         config_dict = yaml.safe_load(f)
@@ -183,6 +184,11 @@ def load_config(fname_config_yaml: str | Path) -> ModelSelectionConfig:
             model_cv_params["model"] = ESTIMATORS[model_cv_params["model_name"]]  # type: ignore
             config.params[i] = ModelCVParams(**model_cv_params)  # type: ignore
 
+    SAVE_PATH = ROOT / config.save_path
+    SAVE_PATH.mkdir(parents=True, exist_ok=True)
+
+    NFOLDS = config.num_cv_folds
+    
     return config
 
 
@@ -349,29 +355,39 @@ def train_model(
 
 def save_cv_model(cv_model: GridSearchCV, model_name: str):
 
-    save_path = ROOT / f"models/cv_{model_name}.joblib"
-    Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+    #save_models_path = ROOT / f"models/
+    
+    save_models_path = SAVE_PATH / f"models/cv_{model_name}.joblib"
+    Path(save_models_path).parent.mkdir(parents=True, exist_ok=True)
 
-    joblib.dump(cv_model, save_path, compress=1)
+    joblib.dump(cv_model, save_models_path, compress=1)
 
-    logger.success(f"Saved CV model to {save_path}")
+    logger.success(f"Saved CV model to {save_models_path}")
 
 
 def extract_cv_results(cv_model: GridSearchCV) -> pd.DataFrame:
     results = pd.DataFrame(cv_model.cv_results_)
-    model_name = cv_model.estimator.__class__.__name__
+    model_name = cv_model.estimator.__class__.__name__    
     results["model_name"] = model_name
     logger.debug(f"Extracted CV results: \n{results.head(15).T}")
     return results
 
 def extract_best_model_cohort(model_cv_result, ranks_to_select: int = 1) -> pd.DataFrame:
+    primary_metric = CV_SCORING_METRICS[0]
 
-    best_indexes = model_cv_result.nsmallest(ranks_to_select, f"rank_test_{CV_SCORING_METRICS[0]}")
-    best_cohort = model_cv_result.loc[best_indexes.index].reset_index(drop=True)
+    # Sort by primary metric rank (ascending, smaller rank is better), then by mean_score_time (ascending, smaller is better),
+    # then by mean_fit_time (ascending, smaller is better) to break ties
+    sorted_results = model_cv_result.sort_values(
+        by=[f"rank_test_{primary_metric}", "mean_score_time", "mean_fit_time"],
+        ascending=[True, True, True]
+    )
+
+    best_indexes = sorted_results.head(ranks_to_select).index
+    best_cohort = model_cv_result.loc[best_indexes].reset_index(drop=True)
     
-    best_cohort['submodel_name'] = best_cohort['model_name'] + "_" + best_cohort[f'rank_test_{CV_SCORING_METRICS[0]}'].astype(str)
+    best_cohort['submodel_name'] = best_cohort['model_name'] + "_" + best_cohort[f'rank_test_{primary_metric}'].astype(str)
     best_cohort = best_cohort.set_index("submodel_name") 
-    best_cohort['rank_in_cohort'] = best_cohort[f'rank_test_{CV_SCORING_METRICS[0]}'] 
+    best_cohort['rank_in_cohort'] = best_cohort[f'rank_test_{primary_metric}'] 
 
     logger.debug(f"Selected {ranks_to_select} best CV cohort for model {model_cv_result['model_name'].iloc[0]}: \n{best_cohort.T.to_markdown()}")
 
@@ -381,13 +397,10 @@ def combine_cv_results(cv_results: Iterable[pd.DataFrame]) -> pd.DataFrame:
     combined_results = pd.concat(cv_results, ignore_index=True)
     logger.debug(f"Combined CV results: \n{combined_results.head(15).T}")
     return combined_results
-
     
 def combine_best_cv_results(best_cv_results: Iterable[pd.DataFrame]) -> pd.DataFrame:
-    
-    #logger.info(f"Amount of best CV results to combine: \n{len(list(best_cv_results))}")
     combined_best_results = pd.concat(best_cv_results, ignore_index=False)
-    logger.info(f"Combined CV results: \n{combined_best_results.T.to_markdown()}")
+    logger.info(f"Combined best CV results: \n{combined_best_results.T.to_markdown()}")
     return combined_best_results
 
 def failsafe_checks():
@@ -399,23 +412,12 @@ def failsafe_checks():
         f"ESTIMATOR_NAMES and ESTIMATORS keys must match, but got {estimator_names} and {estimator_keys}"
     )
 
-
-
-def boxplot_comparison(config, cv_results, best_cohort_results, models_names, title = 'CV results boxplot comparison'):
+def boxplot_scores_distribution(cv_results, best_cohort_results, title = 'CV results boxplot comparison'):
     
+    nfolds = NFOLDS
     nplots = len(CV_SCORING_METRICS)
-    ncols = 1
-    fig, axes = plt.subplots(nplots, ncols, figsize=(20, 4*nplots))
-    axes = axes.flatten()
+    fig, axes = plt.subplots(nplots, 1, figsize=(20, 4*nplots))
     
-    nfolds = config.num_cv_folds
-    
-    
-    # models_labels = []
-    # for model_name in models_names:
-    #     models_labels.append(f"{model_name}")
-    #     models_labels.append(f"Best {model_name} cohort")
-     
     for i, metric in enumerate(CV_SCORING_METRICS):   
         
         boxplot_list = []
@@ -423,9 +425,9 @@ def boxplot_comparison(config, cv_results, best_cohort_results, models_names, ti
         
         for model_results, best_cohort_result in zip(cv_results, best_cohort_results):
         
-            scores_per_metric = concatenate_all_folds_scores_per_metric(nfolds, model_results, metric) 
+            scores_per_metric = concatenate_all_folds_scores_per_metric(model_results, metric) 
             model_label= model_results['model_name'].iloc[0]
-            best_scores_per_metric =concatenate_all_folds_scores_per_metric(nfolds, best_cohort_result, metric)
+            best_scores_per_metric =concatenate_all_folds_scores_per_metric(best_cohort_result, metric)
             best_cohort_label = f"Best {best_cohort_result['model_name'].iloc[0]} cohort"
             
             labels_list.append(model_label)
@@ -434,25 +436,19 @@ def boxplot_comparison(config, cv_results, best_cohort_results, models_names, ti
             boxplot_list.append(scores_per_metric)
             boxplot_list.append(best_scores_per_metric)
             
-
-        #scores_per_metric = [concatenate_all_folds_scores_per_metric(nfolds, model_results, metric) for model_results in cv_results]
-        #best_scores_per_metric =[concatenate_all_folds_scores_per_metric(nfolds, model_best_cohort, metric) for model_best_cohort in best_cohort_results]
-        
-        #axes[i].boxplot(scores_per_metric, tick_labels = models_labels)
-        #axes[i].boxplot(best_scores_per_metric, tick_labels = models_labels)
         axes[i].boxplot(boxplot_list, labels=labels_list)
         axes[i].set_ylabel(metric)
     
     plt.tight_layout()
-    fig.savefig(f"{title.replace(' ', '_')}.png")
+    fig.savefig(SAVE_PATH / f"{title.replace(' ', '_')}.png")
     
-def best_scores_per_fold_comparison(config, best_cv_results, title = 'Best models cohort CV results comparison'):
+def best_scores_stability_plot(best_cv_results, title = 'Best models cohort CV results stability'):
     
+    nfolds = NFOLDS
     nplots = len(CV_SCORING_METRICS)
     fig, axes = plt.subplots(nplots, 1, figsize=(10, 3*nplots))
     axes = axes.flatten()
-    
-    nfolds = config.num_cv_folds
+
     folds = np.linspace(0, nfolds-1, nfolds).astype(int)
     
     rank_marker = {'1': 's', '2': 'o', '3': 'D', '4': 'x', '5': '*'}  # different marker for each rank in cohort
@@ -484,11 +480,12 @@ def best_scores_per_fold_comparison(config, best_cv_results, title = 'Best model
         
     fig.suptitle(title)
     plt.tight_layout()
-    fig.savefig(f"{title.replace(' ', '_')}.png")
+    fig.savefig(SAVE_PATH / f"{title.replace(' ', '_')}.png")
             
             
-def concatenate_all_folds_scores_per_metric(nfolds, model_cv_result, metric):
-       return pd.concat([model_cv_result[f"split{y}_test_{metric}"] for y in range(0, nfolds)], ignore_index=True)
+def concatenate_all_folds_scores_per_metric(model_cv_result, metric):
+    nfolds = NFOLDS
+    return pd.concat([model_cv_result[f"split{y}_test_{metric}"] for y in range(0, nfolds)], ignore_index=True)
 
 
 def extract_best_cohort_mean_scores(best_cv_results_combined):
@@ -534,22 +531,54 @@ def publish_best_cohort_mean_scores(best_cv_results_combined):
     table.scale(1.2, 1.5)
     
     plt.title("Best Cohort CV Mean Scores", fontsize=14)
-    plt.savefig(ROOT / f"best_cohort_mean_scores.png", bbox_inches='tight')
+    plt.savefig(SAVE_PATH / f"best_cohort_mean_scores.png", bbox_inches='tight')
     
-    logger.success(f"Saved best cohort mean scores to ROOT / best_cohort_mean_scores.png")
+    logger.success(f"Saved best cohort mean scores to {SAVE_PATH} / best_cohort_mean_scores.png")
+
+def extract_best_params_tables(best_cv_result):
+    
+        params_cols = [col for col in best_cv_result.columns if col.startswith('param_')]
+        params_table = best_cv_result[params_cols]
+        params_table = params_table.T.dropna()
+        
+        logger.info(f"Best CV cohort parameters: \n{params_table.to_markdown()}")
+        
+        return params_table
+
+
+def publish_best_params_tables(combined_best_cv_results):
+    
+    for model in combined_best_cv_results.model_name.unique():
+        
+        model_best_cv_result = combined_best_cv_results[combined_best_cv_results.model_name == model]
+        params_table = extract_best_params_tables(model_best_cv_result)
+        params_table = params_table.rename(index=lambda x: x.replace('param_', ''))
+
+        fig, ax = plt.subplots(figsize=(10, 0.5*len(params_table )))
+        ax.axis('tight')
+        ax.axis('off')
+        table = ax.table(cellText=params_table.values, colLabels=params_table.columns, rowLabels=params_table.index, cellLoc='center', loc='center')
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1.2, 1.5)
+        plt.title(f"Best CV Cohort Parameters for {model}", fontsize=14)
+        plt.savefig(SAVE_PATH / f"best_cv_cohort_params_{model}.png", bbox_inches='tight')
+    
     
 
-# def fit_best_estimator_on_test(cv_models, test_x, test_y):
+def fit_best_estimator_on_test(cv_model, test_x, test_y):
+
+    best_estimator = cv_model.best_estimator_
+    score_sample = best_estimator.score_sample(test_x)
+    test_score = best_estimator.score(test_x, test_y)
     
-#     for cv_model in cv_models:
-#         best_estimator = cv_model.best_estimator_
-#         test_score = best_estimator.score(test_x, test_y)
-        
-#         residuals = test_y - best_estimator.predict(test_x)
-        
-        
-#         logger.info(f"Test score for model {cv_model.estimator.__class__.__name__}: {test_score}")
-        
+    #residuals = test_y - best_estimator.predict(test_x)
+    
+    logger.info(f"Test score for model {cv_model.estimator.__class__.__name__}: {test_score}")
+    logger.info(f"Test score per sample for model {cv_model.estimator.__class__.__name__}: {score_sample}")
+    
+    
+       
         
 # # TODO: do cv on best estimator and on test set, and do visualization on those ones.
 

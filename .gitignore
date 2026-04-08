@@ -16,3 +16,4 @@ models/
 .env
 
 data/
+catboost_info/

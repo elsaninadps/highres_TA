@@ -6,16 +6,19 @@ xname_features:
 - nitrate
 - bottomdepth
 num_cv_folds: 5
+num_best_models_cohort: 2
+save_path: "outputs/model_selection/test_setup"
 
 
 params:
 
 - model_name: "CatBoost"
-  default_kwargs: { train_dir: models/catboost_cv_train_info }
+  #default_kwargs: { train_dir: models/catboost_cv_train_info }
   param_grid:
-    n_estimators: [10, 20, 30]
+    n_estimators: [10, 20, 30, 10000]
     depth: [ 5]
     border_count: [ 512 ]
+    early_stopping_rounds: [ 20 ]
 
 # - model_name: "LightGBM"
 #   param_grid:
