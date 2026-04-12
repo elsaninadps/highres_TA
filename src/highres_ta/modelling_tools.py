@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 import copy
 import scipy.stats as stats
 import seaborn as sns
-import torch
 import numpy as np
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature

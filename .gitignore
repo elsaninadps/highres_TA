@@ -9,9 +9,11 @@ outputs/
 data_source/
 trained_models/
 models/
+*.png
 
 # Virtual environments
 .venv
 .env
 
 data/
+catboost_info/
