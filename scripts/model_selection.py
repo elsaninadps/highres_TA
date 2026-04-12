@@ -420,14 +420,7 @@ def combine_best_cv_results(best_cv_results: Iterable[pd.DataFrame]) -> pd.DataF
     logger.info(f"Combined best CV results: \n{combined_best_results.T.to_markdown()}")
     return combined_best_results
 
-def failsafe_checks():
 
-    estimator_names = set(ESTIMATOR_NAMES.__args__)
-    estimator_keys = set(ESTIMATORS.keys())
-
-    assert estimator_names == estimator_keys, (
-        f"ESTIMATOR_NAMES and ESTIMATORS keys must match, but got {estimator_names} and {estimator_keys}"
-    )
 
 def boxplot_scores_distribution(cv_results, best_cohort_results, title = 'CV results boxplot comparison'):
     
@@ -621,9 +614,19 @@ def publish_test_scores(scores, model_name: str):
     logger.success(f"Saved test scores to {SAVE_PATH} / {model_name}_test_scores.png")
     
        
-        
+       
 # # TODO: do cv on best estimator and on test set, and do visualization on those ones.
 
+
+def failsafe_checks():
+
+    estimator_names = set(ESTIMATOR_NAMES.__args__)
+    estimator_keys = set(ESTIMATORS.keys())
+
+    assert estimator_names == estimator_keys, (
+        f"ESTIMATOR_NAMES and ESTIMATORS keys must match, but got {estimator_names} and {estimator_keys}"
+    )
+    
 if __name__ == "__main__":
     failsafe_checks()
     main()

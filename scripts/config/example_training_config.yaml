@@ -1,0 +1,24 @@
+
+save_folder: "outputs/training/example_training"
+training_mode: 'GridSearch'
+
+run_param_single: #maybe for gridsearch and other train methods
+run_param_gridsearch:    
+    
+xname_features: 
+- salinity
+- temperature
+- mld_dens_soda
+- ssh_adt
+- ssh_sla
+- chl_globcolour
+yname_target: talk_normalized
+
+
+baseline_regression: 'None' # do we want possibility for ridge, lasso etc or only numpy?
+baseline_features: ['temperature', 'salinity']
+
+catboost_param_grid: 
+  iterations : [5, 10, 20]
+  depth: [3, 6]
+
