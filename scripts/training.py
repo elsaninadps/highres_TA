@@ -493,8 +493,39 @@ def predict_on_test(cb_model, test_pool):
 
 @lru_cache(maxsize=1)
 def load_inference_data() -> xr.Dataset:
+    
+    drop_at_import = [
+        "chl_filled_flag",
+        "chl_flag",
+        "chl_sigma",
+        "chl_sigma_bias",
+        "chl_sigma_regrid",
+        "chl_sigma_uncert",
+        "fco2atm_noaa",
+        "ice",
+        "pres_std",
+        "press",
+        "ssh_sigma",
+        "ssh_sigma_regrid",
+        "ssh_sigma_uncert",
+        "sss_flag",
+        "sss_old",
+        "sss_old_flag",
+        "sss_sigma",
+        "sss_sigma_uncert",
+        "sst_flag",
+        "sst_sigma",
+        "sst_sigma_regrid",
+        "sst_sigma_uncert",
+        "wind_std",
+        "windspeed_moment1",
+        "windspeed_moment2",
+        "xco2atm_mauna_loa",
+        "xco2mbl_noaa",
+    ]
+    
     url = "https://data.up.ethz.ch/shared/OceanSODA-ETHZv2/inference_for_gregor2024/data_8daily_25km_v01.zarr/"
-    ds_raw = xr.open_zarr(url, consolidated=True, group="2004")
+    ds_raw = xr.open_zarr(url, consolidated=True, group="2004", drop_variables=drop_at_import)
 
     url = "https://www.ngdc.noaa.gov/thredds/dodsC/global/ETOPO2022/60s/60s_bed_elev_netcdf/ETOPO_2022_v1_60s_N90W180_bed.nc"
 
@@ -538,7 +569,6 @@ def preprocess_inference_data(inference_dataset : xr.Dataset, train_columns: lis
     return dfnn
 
 
-
 def predict_inference(inference_df: pd.DataFrame, model: cb.CatBoostRegressor | LinearRegression):
     
     #loop on t
@@ -548,7 +578,7 @@ def predict_inference(inference_df: pd.DataFrame, model: cb.CatBoostRegressor | 
     logger.success("Predictions on inference data")
     return predictions
 
-  
+
 if __name__ == "__main__":
     #failsafe_checks()
     main()
