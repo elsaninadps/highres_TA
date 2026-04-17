@@ -16,7 +16,7 @@ models/
 .env
 
 data/
-.DS_Store
-**/catboost_info/
-models/
+
+**/catboost_info/*
 *.nc
+.DS_Store
