@@ -1,0 +1,53 @@
+fname_data_parquet: data/training/GLODAPv2023-raw_collocated-{y}.pq
+yname_target: talk_normalized
+xname_features:
+- salinity
+- temperature
+- bottomdepth
+- mld_dens_soda
+- ssh_adt
+- ssh_sla
+- chl_globcolour
+num_cv_folds: 5
+num_best_models_cohort: 3
+save_path: "outputs/model_selection/second_coarse_search"
+
+
+params:
+
+- model_name: "LinearRegression"
+  param_grid: {}
+
+  
+- model_name: "RandomForest"
+  param_grid: 
+    n_estimators: [300]
+    min_samples_leaf: [5, 10, 20]
+    max_features: ["sqrt", "log2", 1.0]
+    criterion: ["squared_error", "absolute_error"]
+
+
+- model_name: "CatBoost"
+  #default_kwargs: { train_dir: models/catboost_cv_train_info }
+  param_grid:
+    depth: [6, 10]
+    learning_rate: [0.03, 0.1]
+    n_estimators: [500, 1000]
+    # l2_leaf_reg: [1, 5, 10]
+    # border_count: [150, 300]
+
+    # early_stopping_rounds: [10]
+    # early_stopping_min_delta: [0.0]
+    # subsample: [0.7, 0.9, 1.0]
+
+#maybe do a CatboostUncert and CatboostGBM model with bagging_method set to MVS?
+
+
+
+- model_name: "LightGBM"
+  param_grid:
+    num_leaves: [20, 50]
+    learning_rate: [0.03, 0.1]
+    n_estimators: [500, 1000]
+    min_child_samples: [10, 30]
+    n_jobs: [1]

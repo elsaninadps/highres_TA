@@ -1,0 +1,92 @@
+Implement
+- look at grid search to see how parallel thread or early stopping are implemetend
+- heldout test scoring
+- params saving --> tables for each regressor type
+- shuffling folds
+- ranking of models using a different score metric, 
+- verify that regressor_rank_1 = regressor.best_estimator 
+- recover from saved files and change file saving names
+- do a Baseline comparison and then an 'exotic catboost' comparison
+----------------------------------------
+
+One big grid search run
+One run changing the folds/fold method
+
+Extract best params from both --> new config
+
+
+Score on heldout test
+(Try with some coordinates in the prediction)
+
+-------------------------------------
+LGBM
+-------------------------------------
+
+fast and efficient
+leaf Wise growth hels reduce overfitting and improve accuracy
+handles missing values and sparse data
+fast and low memory usage for large data sets
+
+- n_estimators: default = 100
+ how many boosting rounds. Start small 100-500
+- learning_rate: default = 0.1 , 
+how much each tree contributes to the final prediction. Start big 0.1 and reduce to 0.01 or 0.001 for tough problems. Large rate if little boosting rounds
+-num_leaves: default = 31, 
+maximum number of leaves in one tree, ie how complex a tree can bee, large can lead to overfitting. Keep close to 2^max_depth
+- max_depth: default = -1 (ie no limit)
+limits depth of tree, start with a range of 3-10
+- feature_fraction: default = 1, 
+start at 0.8 and decrease if you notice overfitting
+
+
+-data_sample_strategy: default = bagging --> bagging_freq > 0 and bagging_fraction < 1
+			or goss = gradient based one side sampling
+-num_threads, default = 0
+- min_data_in_leaf, default = 20
+- bagging_fraction, default = 1.0 : fraction of training data to be used in the Following rounds
+- bagging_freq: default = 0 = disabled, k = bagging at every k iteration
+- feature_fraction_bynode: default = 1, results in feature_fraction*feature_fraction_bynode to be selected for splits at EACH node
+- early_stopping_round, default = 0 
+- early_stopping_min_delta, default = 0.0, the delta to be considered an improvement
+- first_metric_only: default = false, only consider first metric for early stopping
+
+You can use early stopping to avoid overfitting. 
+
+-----------------------------------------------
+Random forest
+---------------------------------------------
+-n_estimators: default = 100. More tree increase performance
+- max_features: sqrt(speeds up and reduce overfit), log2 (more randomness and reduce overfit more), none (increases model complexity and may cause overfitting esp with many features)
+- max_depth: default = None
+- max_leaf_nodes: default = None, control complexity and size
+- max_sample: determines bootstrapping subdataset size, default = None = all training data
+- min_sample_split: minimul number of samples required to split and internal node
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+TODO:
+
+
+
+- rename inference variables
+- make the bottomdepth dataset impor work
+- code inference on only one time stamp
+- code display map

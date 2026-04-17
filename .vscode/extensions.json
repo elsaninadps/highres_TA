@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-toolsai.jupyter",
+    "charliermarsh.ruff",
+    "redhat.vscode-yaml",
+    "Gruntfuggly.todo-tree",
+    "hoolby.vscode-tree-file-size",
+  ]
+}
