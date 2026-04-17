@@ -14,3 +14,7 @@ trained_models/
 .env
 
 data/
+.DS_Store
+**/catboost_info/
+models/
+*.nc
