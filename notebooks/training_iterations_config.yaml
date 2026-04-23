@@ -1,0 +1,33 @@
+fname_data_parquet: data/training/GLODAPv2023-raw_collocated-{y}.pq
+yname_target: talk
+xname_features:
+- salinity
+- temperature
+- bottomdepth
+- mld_dens_soda
+- ssh_adt
+- ssh_sla
+- chl_globcolour
+- ncoord_a
+- ncoord_b
+- ncoord_c
+
+# filter out very low salinity, and shallow seas
+outliers_filter : 
+  lower_sal: 25
+  upper_sal: 40
+  lower_depth: 150
+
+ith_split: 0
+
+bagged_estimator_params:
+  n_estimators: 20
+  polynomial_degree: 1
+  max_samples: 0.2
+  loss_function: "MAE"
+  linear_features: ["salinity"]  # better than when including temperature
+  n_jobs: 8
+
+# num_cv_folds: 5
+# save_path: "outputs/model_selection/test_setup"
+#ALL_FEATURES = ['salinity', 'temperature', 'bottomdepth', 'mld_dens_soda', 'ssh_adt', 'ssh_sla', 'chl_globcolour', 'coordsA', 'coordsB', 'coordsC']

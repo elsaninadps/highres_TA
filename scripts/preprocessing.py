@@ -156,4 +156,3 @@ def get_train_test_split_by_expocode_salinity_bin_based(
     test = data.iloc[idx_test]
 
     return train, test
-    
