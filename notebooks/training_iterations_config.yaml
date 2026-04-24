@@ -3,6 +3,7 @@ yname_target: talk
 xname_features:
 - salinity
 - temperature
+- depth
 - bottomdepth
 - mld_dens_soda
 - ssh_adt
@@ -18,7 +19,7 @@ outliers_filter :
   upper_sal: 40
   lower_depth: 150
 
-ith_split: 0
+ith_split: 3
 
 bagged_estimator_params:
   n_estimators: 20
