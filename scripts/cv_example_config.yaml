@@ -3,8 +3,18 @@ yname_target: talk
 xname_features:
 - salinity
 - temperature
-- nitrate
 - bottomdepth
+# - depth
+- ssh_adt
+# - ssh_sla
+- is_coastal
+- chl_globcolour
+# - nitrate
+- silicate
+# - phosphate
+- ncoord_a
+- ncoord_b
+- ncoord_c
 num_cv_folds: 5
 
 params:

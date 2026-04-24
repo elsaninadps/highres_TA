@@ -193,7 +193,6 @@ def preprocess_data(df: pd.DataFrame, config: ModelSelectionConfig) -> pd.DataFr
     pd.DataFrame
         The preprocessed training df
     """
-    index_columns = DF_INDEX_COLUMNS
 
     keep_cols = set(config.xname_features + [config.yname_target]).union(COMPULSORY_COLUMNS)
 
