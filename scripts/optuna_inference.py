@@ -1,3 +1,6 @@
+#prduced by chatgpt
+
+
 import pathlib
 from functools import lru_cache
 
@@ -9,6 +12,9 @@ import xarray as xr
 from cartopy.crs import PlateCarree
 from loguru import logger
 from matplotlib import pyplot as plt
+from sklearn import metrics
+import optuna
+
 from model_selection import (
     ModelSelectionConfig,
     get_splits_by_expocode_salinity_bin_based,
@@ -16,36 +22,89 @@ from model_selection import (
     load_data,
     preprocess_data,
 )
-from scipy.special import huber
-from sklearn import metrics
 
+from scipy.special import huber
 from highres_ta import BaggingCatBoostResidualRegressor
 from highres_ta import estimators as models
 
 ROOT = pathlib.Path(dotenv.find_dotenv("pyproject.toml")).parent
 
-LINEAR_FEATURES = [
-    "salinity",
-    "temperature",
-]
+LINEAR_FEATURES = ["salinity", "temperature"]
 
-MODEL_PARAMS = dict(
-    n_estimators=24,
+DEFAULT_PARAMS = dict(
+    n_estimators=3, #24
     iterations=850,
-    polynomial_degree=2,
+    #polynomial_degree=1,
     max_samples=0.66,
     random_strength=1,
     loss_function="MAE",
-    linear_features=LINEAR_FEATURES,
+    #linear_features=LINEAR_FEATURES,
     min_data_in_leaf=40,
     n_jobs=8,
 )
 
+STRUCTURAL_PARAMS = dict(
+    polynomial_degree=1,
+    linear_features=LINEAR_FEATURES,
+    n_jobs=8,
+    loss_function="MAE",
+)
 
+RUN_NAME = "finetuning_optuna_3"
+
+# =========================
+# MAIN PIPELINE
+# =========================
 def main():
 
+    # Load data and config
     config = load_config(ROOT / "scripts/cv_example_config.yaml")
+    df = prepare_data()
+
+    # Train-test split based on expocode and salinity bins
+    train_x, train_y, test_x, test_y = train_test_split(df, config)
+
+    # OPTUNA TUNING
+    best_params, selected_features = run_optuna(df, config, n_trials=50)
+
+
+    # keep only best features combination if it was tuned by optuna, otherwise use all features
+    #config.xname_features = selected_features
+    selected_features = config.xname_features
+    train_x = train_x[selected_features]
+    test_x = test_x[selected_features]
+
+    figs = []
+
+    # train with best parameters
+    fig0, fig1, fig2, fig3 = train(
+        train_x.copy(), train_y,
+        test_x.copy(), test_y,
+        best_params
+    )
+
+    figs.extend([fig0, fig1, fig2, fig3])
+
+    bagged_model = models.BaggingCatBoostResidualRegressor.load(
+        ROOT / f"models/bagged_catboost_residual_model{RUN_NAME}.pkl"
+    )
+    yhat_test = bagged_model.predict(test_x)
+
+    ds = inference(bagged_model, train_x.copy())
+
+    fig4, axs = plot_predictions(ds)
+    plot_scores_map(test_x, test_y, yhat_test, ax=axs[4], vmin=-40, vmax=40)
+    figs.append(fig4)
+
+    save_figs_to_pdf(figs)
+
+
+
+def prepare_data(config):
+    
     df_raw = load_data()
+
+    # Preprocess data
     df_raw["lon"] = (df_raw["lon"] - 180) % 360 - 180
 
     coast_mask = get_coastal_mask()
@@ -55,46 +114,156 @@ def main():
     df = add_n_coords(df_raw)
     df = preprocess_data(df, config)
     df = filter_outliers(df)
-    train_x, train_y, test_x, test_y = train_test_split(df, config)
+    
+    return df
+    
+    
+    
+# =========================
+# OPTUNA OBJECTIVE
+# =========================
+def make_objective(df, config):
+    splits = get_splits_by_expocode_salinity_bin_based(df, n_folds=3)
 
-    figs = []
-    if True:
-        fig0, fig1, fig2, fig3 = train(train_x, train_y, test_x, test_y)
-        figs.extend([fig0, fig1, fig2, fig3])
+    def objective(trial):
 
-    bagged_model = models.BaggingCatBoostResidualRegressor.load(
-        ROOT / "models/bagged_catboost_residual_model.pkl"
+        # =============================
+        # HYPERPARAMETERS
+        # =============================
+        params = {
+            "n_estimators": trial.suggest_int("n_estimators", 3, 20),
+            "iterations": trial.suggest_int("iterations", 700, 1000),
+            "max_samples": trial.suggest_float("max_samples", 0.5, 0.9),
+            "random_strength": trial.suggest_float("random_strength", 0.5, 1.5),
+            "min_data_in_leaf": trial.suggest_int("min_data_in_leaf", 40, 80),
+
+        }
+
+        params |= STRUCTURAL_PARAMS
+        
+        selected_features = config.xname_features.copy()
+
+        # =============================
+        # FEATURE SELECTION
+        # =============================
+        # base_features = config.xname_features
+
+        # # always include salinity
+        # selected_features = ["salinity", "temperature", "ncoord_a", "ncoord_b", "phosphate", "ssh_adt"]
+
+        # for f in base_features:
+        #     if f in selected_features:
+        #         continue
+
+        #     use_f = trial.suggest_categorical(f"use_{f}", [True, False])
+        #     if use_f:
+        #         selected_features.append(f)
+
+        # # safeguard (avoid too small feature set)
+        # if len(selected_features) < 3:
+        #     selected_features = base_features
+
+        # # =============================
+        # # LINEAR FEATURE SELECTION
+        # # =============================
+        # # salinity ALWAYS included
+        # linear_features = ["salinity"]
+
+        # # optionally include temperature (if present)
+        # use_temp_linear = trial.suggest_categorical("use_temp_linear", [True, False])
+        # if use_temp_linear:
+        #     linear_features.append("temperature")
+        # params["linear_features"] = linear_features
+
+        # # =============================
+        # # POLYNOMIAL DEGREE SELECTION
+        # # =============================
+        # #params["polynomial_degree"] = trial.suggest_categorical("polynomial_degree", [1, 2])
+
+        # trial.set_user_attr("selected_features", selected_features)
+        # trial.set_user_attr("linear_features", linear_features)
+
+        # =============================
+        # CROSS-VALIDATION
+        # =============================
+        scores = []
+
+        for fold_idx, (itrain, itest) in enumerate(splits):
+
+            train_df = df.iloc[itrain]
+            test_df = df.iloc[itest]
+
+            train_x = train_df[selected_features].copy()
+            train_y = train_df[config.yname_target]
+
+            test_x = test_df[selected_features].copy()
+            test_y = test_df[config.yname_target]
+
+            model = models.BaggingCatBoostResidualRegressor(**params)
+            logger.info(f"Trial {trial.number}, fold {fold_idx}")
+            model.fit(train_x, train_y)
+
+            yhat = model.predict(test_x)
+
+            score = metrics.mean_absolute_error(test_y, yhat)
+
+            scores.append(score)
+
+            # pruning
+            trial.report(np.mean(scores), step=fold_idx)
+            if trial.should_prune():
+                raise optuna.TrialPruned()
+
+        return float(np.mean(scores))
+
+    return objective
+
+
+def run_optuna(df, config, n_trials=30):
+    study = optuna.create_study(
+        direction="minimize",
+        sampler=optuna.samplers.TPESampler(seed=42),
+        pruner=optuna.pruners.MedianPruner(n_warmup_steps=2),
     )
-    yhat_test = bagged_model.predict(test_x)
 
-    ds = inference(bagged_model, train_x)
+    objective = make_objective(df, config)
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
+    best_trial = study.best_trial
 
-    fig4, axs = plot_predictions(ds)
-    plot_scores_map(test_x, test_y, yhat_test, ax=axs[4], vmin=-40, vmax=40)
-    figs.append(fig4)
+    logger.info(f"Best score: {study.best_value}")
+    logger.info(f"Best params: {study.best_params}")
 
-    save_figs_to_pdf(figs)
+    best_params = study.best_params
+    best_params |= STRUCTURAL_PARAMS
+    
+    selected_features = config.xname_features.copy()
 
+    # {
+    # "loss_function": "MAE",
+    # "n_jobs": 8
+    # }
+    
+    #best_params = DEFAULT_PARAMS.copy()
+    
+    ## recover structure
+    #selected_features = best_trial.user_attrs["selected_features"]
+    #linear_features = best_trial.user_attrs["linear_features"]
 
-def save_figs_to_pdf(figs: list[plt.Figure], filename="training_results.pdf", **props):
-    from matplotlib.backends.backend_pdf import PdfPages
+    #best_params["polynomial_degree"] = best_trial.params["polynomial_degree"]
+    #best_params["linear_features"] = linear_features
 
-    with PdfPages(filename) as pdf:
-        for fig in figs:
-            props = dict(dpi=300, bbox_inches="tight") | props
-            pdf.savefig(fig, **props)
+    return best_params, selected_features
 
+def train(train_x, train_y, test_x, test_y, params):
 
-def train(train_x, train_y, test_x, test_y):
+    tr_coast = train_x.index.get_level_values("is_coastal").astype(bool)
+    te_coast = test_x.index.get_level_values("is_coastal").astype(bool)
 
-    tr_coast = train_x.pop("is_coastal").astype(bool)
-    te_coast = test_x.pop("is_coastal").astype(bool)
-
-    bagged_model = models.BaggingCatBoostResidualRegressor(**MODEL_PARAMS)
+    bagged_model = models.BaggingCatBoostResidualRegressor(**params)
 
     logger.info(f"Fitting model with columns: {train_x.columns.tolist()}")
     bagged_model.fit(train_x, train_y)
-    bagged_model.save(ROOT / "models/bagged_catboost_residual_model.pkl")
+    bagged_model.save(ROOT / f"models/bagged_catboost_residual_model{RUN_NAME}.pkl")
 
     yhat_train = bagged_model.predict(train_x)
     yhat_test = bagged_model.predict(test_x)
@@ -108,6 +277,7 @@ def train(train_x, train_y, test_x, test_y):
         ],
         axis=1,
     )
+
     # plot scores as table in figure
     fig0, ax0 = plt.subplots(figsize=(8, 3))
     ax0.axis("off")
@@ -154,6 +324,18 @@ def train(train_x, train_y, test_x, test_y):
     return fig0, fig1, fig2, fig3
 
 
+# =========================
+# REMAINING FUNCTIONS (UNCHANGED)
+# =========================
+
+def save_figs_to_pdf(figs: list[plt.Figure], filename=f"training_results{RUN_NAME}.pdf", **props):
+    from matplotlib.backends.backend_pdf import PdfPages
+
+    with PdfPages(filename) as pdf:
+        for fig in figs:
+            props = dict(dpi=300, bbox_inches="tight") | props
+            pdf.savefig(fig, **props)
+
 def inference(model, train_x):
     logger.info("Getting inference data...")
 
@@ -190,6 +372,7 @@ def plot_feature_importance(model: BaggingCatBoostResidualRegressor, train_x, ax
     ax.grid(axis="x")
 
     return fig, ax
+
 
 
 def plot_residuals_y(y, yhat, ax=None, **props):
@@ -460,7 +643,4 @@ def plot_predictions(pred_y: xr.Dataset):
 
 
 if __name__ == "__main__":
-    from scripts.get_timeseries_data import main as plot_timeseries
-
     main()
-    plot_timeseries()

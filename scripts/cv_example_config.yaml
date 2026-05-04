@@ -4,14 +4,13 @@ xname_features:
 - salinity
 - temperature
 - bottomdepth
-# - depth
+# depth
 - ssh_adt
-# - ssh_sla
-- is_coastal
-- chl_globcolour
-# - nitrate
-- silicate
-# - phosphate
+# ssh_sla
+# chl_globcolour
+- nitrate
+# silicate
+- phosphate
 - ncoord_a
 - ncoord_b
 - ncoord_c

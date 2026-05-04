@@ -101,8 +101,8 @@ class ModelSelectionConfig:
     yname_target: Literal["talk", "talk_normalized"]
     xname_features: list[str]
     num_cv_folds: int
-    num_best_models_cohort: int
-    save_path: str | Path
+    #num_best_models_cohort: int
+    #save_path: str | Path
     params: list[ModelCVParams]
     salinity_bins: tuple[float, ...] = SALINITY_BIN_EDGES
     salinity_name: str = "salinity"
@@ -185,8 +185,8 @@ def load_config(fname_config_yaml: str | Path) -> ModelSelectionConfig:
             model_cv_params["model"] = ESTIMATORS[model_cv_params["model_name"]]  # type: ignore
             config.params[i] = ModelCVParams(**model_cv_params)  # type: ignore
 
-    SAVE_PATH = ROOT / config.save_path
-    SAVE_PATH.mkdir(parents=True, exist_ok=True)
+    #SAVE_PATH = ROOT / config.save_path
+    #SAVE_PATH.mkdir(parents=True, exist_ok=True)
 
     NFOLDS = config.num_cv_folds
     
@@ -260,7 +260,7 @@ def preprocess_data(df: pd.DataFrame, config: ModelSelectionConfig) -> pd.DataFr
 
     # set quadruple index 
     index_columns = DF_INDEX_COLUMNS
-    index_columns = list(DF_INDEX_COLUMNS + ("salinity_bin",))
+    index_columns = list(DF_INDEX_COLUMNS + ("salinity_bin","is_coastal"))
     df = df.set_index(index_columns)
 
     # select columns and drop rows with missing values in the selected columns

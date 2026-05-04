@@ -20,3 +20,4 @@ data/
 **/catboost_info/*
 *.nc
 .DS_Store
+*.pdf
