@@ -16,15 +16,16 @@ INDEXES_LITERAL = Literal["expocode", "time", "lat", "lon", "salinity_bin", 'is_
 class TestSet:
         test_x: pd.DataFrame
         predictions_df : pd.DataFrame
-        general_scores: pd.DataFrame
+        scores: pd.DataFrame
         label: str 
         color : str 
         marker: str
         linestyle: str
+        nsamples: int
         noise: np.ndarray | None | pd.Series =None
         
         
-def get_plot_props(i):
+def get_set_props(i):
     
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
@@ -72,7 +73,7 @@ def scoring(y_true, y_pred) -> pd.DataFrame:
     return scores.Scores
     
 
-def make_prediction_df(y_pred: np.ndarray, y_true: pd.Series, test_x) -> pd.DataFrame:
+def make_prediction_df(y_pred: np.ndarray, y_true: pd.Series, test_x, add_levels = True) -> pd.DataFrame:
     
     assert y_true.shape == y_pred.shape 
 
@@ -86,9 +87,17 @@ def make_prediction_df(y_pred: np.ndarray, y_true: pd.Series, test_x) -> pd.Data
     predictions_df["residuals"] = y_pred - y_true
     
     predictions_df = predictions_df.join(test_x)
+    
+    if add_levels:
+        predictions_df = add_some_index_levels(predictions_df)
 
-    # --- Extract time index ---
-    time_idx = predictions_df.index.get_level_values("time")
+    return predictions_df
+
+
+def add_some_index_levels(df):
+    
+        # --- Extract time index ---
+    time_idx = df.index.get_level_values("time")
 
     # --- Derived temporal features ---
     year = time_idx.year
@@ -101,7 +110,7 @@ def make_prediction_df(y_pred: np.ndarray, y_true: pd.Series, test_x) -> pd.Data
     bin_8d = ((doy - 1) // 8) + 1
     
     
-    lat = predictions_df.index.get_level_values("lat")
+    lat = df.index.get_level_values("lat")
 
     lat_bin = np.where(
         lat < -30,
@@ -115,7 +124,7 @@ def make_prediction_df(y_pred: np.ndarray, y_true: pd.Series, test_x) -> pd.Data
 
     # --- Build new MultiIndex ---
     # Keep existing index levels
-    index_df = predictions_df.index.to_frame(index=False)
+    index_df = df.index.to_frame(index=False)
 
     index_df["lat_bin"] = lat_bin
     index_df["year"] = year.values
@@ -124,9 +133,9 @@ def make_prediction_df(y_pred: np.ndarray, y_true: pd.Series, test_x) -> pd.Data
 
     new_index = pd.MultiIndex.from_frame(index_df)
 
-    predictions_df.index = new_index
-
-    return predictions_df
+    df.index = new_index
+    
+    return df
 
 def make_multilevel_groups(df, time_grouping_level="year", secondary_grouping_level=None):
     
@@ -153,6 +162,7 @@ def plot_salinity_distribution(test_set, fig = None):
     color = test_set.color
     label = test_set.label
     linestyle = test_set.linestyle
+    nsamples = test_set.nsamples
     
     # --- Left: salinity distributions ---
     ax.hist(
@@ -160,7 +170,7 @@ def plot_salinity_distribution(test_set, fig = None):
         bins=50,
         density=True,
         alpha=0.4,
-        label=label,
+        label=f"{label} (n={nsamples})",
         color = color
     )
 
@@ -286,6 +296,8 @@ def plot_residuals_map(predictions_df, ax=None, **kwargs):
         c=predictions_df["residuals"] ,
         **props,
     )
+    
+    #TODO: add nsamples on map
 
     return fig, ax
 
@@ -317,7 +329,7 @@ def plot_residuals_feature_kde(test_set, feature, fig = None):
 
     ax.axhline(0, color="white", linestyle="--", linewidth=1)
 
-    ax.set_title(f"{test_set.label} - Joint Density: {feature} vs Residuals")
+    ax.set_title(f"{test_set.label} (n={test_set.nsamples})- Joint Density: {feature} vs Residuals")
     ax.set_xlabel(feature)
     ax.set_ylabel("Residuals")
 
@@ -351,7 +363,7 @@ def scatter_residuals_vs_feature(test_set, feature, fig=None):
         ax = fig.get_axes()[0]
 
     logger.info(f"plotting residuals vs {feature}")
-    ax.scatter(df[feature], df["residuals"], alpha=0.3, s=10, label =label, color = color)
+    ax.scatter(df[feature], df["residuals"], alpha=0.3, s=10, label =f"{label} (n={test_set.nsamples})", color = color)
 
     # optional smoothing (binned mean)
     bins = np.linspace(df[feature].min(), df[feature].max(), 50)
@@ -393,7 +405,7 @@ def plot_residuals_distribution(test_set, fig=None, x_range=None):
         density=True,
         alpha=0.5,
         color=color,
-        label=label,
+        label=f"{label} (n={test_set.nsamples})",
         range=x_range
     )
 

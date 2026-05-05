@@ -17,7 +17,7 @@ from scipy.special import huber
 from highres_ta import BaggingCatBoostResidualRegressor
 from highres_ta import estimators as models
 from inference import train_test_split
-from highres_ta.evaluation import make_prediction_df, scoring_from_df, TestSet, get_plot_props
+from highres_ta.evaluation import make_prediction_df, scoring_from_df, TestSet, get_set_props
 from optuna_inference import prepare_data, save_figs_to_pdf
 import pandas as pd
 import numpy as np
@@ -28,7 +28,7 @@ import matplotlib.pyplot as plt
 
 ROOT = pathlib.Path(dotenv.find_dotenv("pyproject.toml")).parent
 MODEL_FILE = "bagged_catboost_residual_modelstructural_optuna_4.pkl"     
-OUTPUTS_FOLDER = ROOT/f"outputs/salinity_analysis"
+OUTPUTS_FOLDER = ROOT/f"outputs/test_set_evaluation"
 
 def main():
     
@@ -39,29 +39,33 @@ def main():
         ROOT / f"models/{MODEL_FILE}"
     )
     config = load_config(ROOT / "scripts/cv_example_config.yaml")
-    config.xname_features = trained_model.feature_names_in_.tolist()
+    config.xname_features = trained_model.feature_names_in_.tolist() #TODO: clarify how config is used here
+    
     df = prepare_data(config)
     train_x, train_y, test_x, test_y = train_test_split(df, config)
     
-    global ORIGINAL_TEST_X, ORIGINAL_TEST_Y, TRAINED_MODEL
+    global ORIGINAL_TEST_X, ORIGINAL_TEST_Y, TRAINED_MODEL, FEATURES
     ORIGINAL_TEST_Y = test_y
     ORIGINAL_TEST_X = test_x
     TRAINED_MODEL = trained_model
+    FEATURES = trained_model.feature_names_in_.tolist()
     
     # Original test set predictions and scores
     yhat_test   = trained_model.predict(test_x)    
     predictions_df = make_prediction_df(y_pred = yhat_test, y_true = test_y, test_x=test_x)
     scores = scoring_from_df(predictions_df)
+    nsamples = len(predictions_df['y_pred'])
     
     # bundle the original test set into a dataclass
     original_test_dict = {
         'test_x' : test_x,
         'predictions_df' : predictions_df, # to be filled after prediction
-        'general_scores' : scores,
+        'scores' : scores,
         'noise' : None,
-        'label' : 'original' 
+        'label' : 'original',
+        'nsamples': nsamples 
     }
-    props = get_plot_props(0)
+    props = get_set_props(0)
     original_test_dict.update(props)
     OriginalTestSet = TestSet(**original_test_dict)
     
@@ -153,22 +157,19 @@ def main():
     )
     
     # noise_impact_analysis(random_noise_test_set_list, 
-    #                       config.xname_features, 
     #                       study_name= "random_noise_impact_analysis.pdf"
     #                       )
     
 
     noise_impact_analysis(uniform_noise_test_set_list, 
-                          features_list = config.xname_features, 
+                          features_list= FEATURES,
                           study_name="uniform_0.5_noise_impact_analysis.pdf"
                           )
-    # noise_impact_analysis(prop_dev_test_set_list, 
-    #                       config.xname_features, 
+    # noise_impact_analysis(prop_dev_test_set_list, features_list = FEATURES,    
     #                       study_name= "prop_sal_dev_noise_impact_analysis.pdf"
     #                       )
     
-    # noise_impact_analysis(inv_prop_dev_test_set_list, 
-    #                       config.xname_features, 
+    # noise_impact_analysis(inv_prop_dev_test_set_list, features_list = FEATURES
     #                       study_name= "inv_prop_sal_dev_noise_impact_analysis.pdf"
     #                       )
 
@@ -186,27 +187,29 @@ def run_noisy_test(label, noise):
     logger.info(f"{len(noisy_yhat_test)=}, {len(ORIGINAL_TEST_Y)=}, {len(noisy_test_x)=}")
     noisy_predictions_df = make_prediction_df(y_pred = noisy_yhat_test, y_true = original_test_y, test_x=noisy_test_x)
     noisy_scores = scoring_from_df(noisy_predictions_df)
+    nsamples = len(noisy_predictions_df['y_pred'])
     
     
     testset_dict = {
         'test_x' : noisy_test_x,
         'noise' : noise,
         'predictions_df': noisy_predictions_df,
-        'general_scores': noisy_scores,
-        'label': label
+        'scores': noisy_scores,
+        'label': label,
+        'nsamples': nsamples
     }
     
     return testset_dict
 
 def make_testset_list(noise_dict_list, original_test_set):
     
-    from highres_ta.evaluation import get_plot_props
+    from highres_ta.evaluation import get_set_props
 
     test_set_list = [original_test_set]
     for i, noise_dict in enumerate(noise_dict_list):
         
         test_set_dict = run_noisy_test(**noise_dict)
-        plot_props = get_plot_props(i+1) #zero always for oringinal test set
+        plot_props = get_set_props(i+1) #zero always for oringinal test set
         test_set_dict.update(plot_props)
         
         test_set = TestSet(**test_set_dict)
@@ -215,15 +218,16 @@ def make_testset_list(noise_dict_list, original_test_set):
     return test_set_list
 
 def noise_impact_analysis(test_set_list, features_list, study_name = "example_salinity_imapct_analysis.pdf"):
+
     
     for test_set in test_set_list:
-        logger.info(f"Scores for {test_set.label}:\n{test_set.general_scores.to_markdown(floatfmt='.3f')}")
+        logger.info(f"Scores for {test_set.label}:\n{test_set.scores.to_markdown(floatfmt='.3f')}")
     
     # initialize figures with first test set (original)
     
     fig0 = compare_noise_distribution(test_set_list)
     fig1 = compare_metrics_timeseries(test_set_list=test_set_list)
-    fig3 = compare_general_scores(test_set_list)
+    fig3 = compare_scores(test_set_list)
     fig4 = compare_residuals_distributions(test_set_list)
     fig5 = compare_residuals_maps(test_set_list)
     fig6 = compare_residuals_target_scatterplots(test_set_list)
@@ -249,14 +253,14 @@ def plot_noise_distribution(test_set: TestSet, fig = None):
     color = test_set.color
     label = test_set.label
     linestyle = test_set.linestyle
-    
+    nsamples = test_set.nsamples
     # --- Left: salinity distributions ---
     ax[0].hist(
         test_x["salinity"],
         bins=50,
         density=True,
         alpha=0.4,
-        label=label,
+        label=f"{label} (n={nsamples})",
         color = color
     )
 
@@ -274,7 +278,9 @@ def plot_noise_distribution(test_set: TestSet, fig = None):
             noise,
             bins=50,
             density=True,
-            alpha=0.6
+            alpha=0.6,
+            label = f"{label} (n={nsamples})",
+            color = color
         )
 
         #noise.plot(kind="kde", ax=ax[1], linewidth=1, label=f"{label} KDE", color= color)
@@ -394,10 +400,10 @@ def compare_residuals_target_scatterplots(test_set_list: list[TestSet]):
 
 
 
-def compare_general_scores(test_set_list):
+def compare_scores(test_set_list):
     from highres_ta.evaluation import plot_scores_table
     
-    all_scores = pd.concat([test_set.general_scores.rename(test_set.label) for test_set in test_set_list], axis=1)
+    all_scores = pd.concat([test_set.scores.rename(test_set.label) for test_set in test_set_list], axis=1)
     
     fig = plot_scores_table(all_scores, label="Overall Scores")
     fig.tight_layout()
@@ -416,10 +422,6 @@ def compare_residuals_maps(test_set_list):
     fig = plt.figure(figsize=(12, 5 * nrows))
 
     for i, test_set in enumerate(test_set_list):
-        
-        test_x = test_set.test_x
-        test_y = test_set.predictions_df["y_true"]
-        yhat_test = test_set.predictions_df["y_pred"]
         
         ax = fig.add_subplot(
             nrows, ncols, i + 1,
@@ -468,7 +470,7 @@ def compare_joint_kde_distribution(test_set_list, feature):
     # # OriginalTestSet = TestSet(
     # #     test_x = test_x,
     # #     predictions_df = predictions_df, # to be filled after prediction
-    # #     general_scores = scores,
+    # #     scores = scores,
     # #     noise = None,
     # #     color = "blue",
     # #     marker = "o",
@@ -484,7 +486,7 @@ def compare_joint_kde_distribution(test_set_list, feature):
     # Uniform_Positive_Noise_TestSet = TestSet(
     #     test_x = noisy_test_x,
     #     predictions_df = noisy_predictions_df,
-    #     general_scores = noisy_scores,
+    #     scores = noisy_scores,
     #     noise = noise,
     #     color = "orange",
     #     marker = "x",
@@ -497,7 +499,7 @@ def compare_joint_kde_distribution(test_set_list, feature):
     # Uniform_Negative_Noise_TestSet = TestSet(
     #     test_x = noisy_test_x,
     #     predictions_df = noisy_predictions_df,
-    #     general_scores = noisy_scores,
+    #     scores = noisy_scores,
     #     noise = noise,
     #     color = "green",
     #     marker = "s",
@@ -517,7 +519,7 @@ def compare_joint_kde_distribution(test_set_list, feature):
     # small_prop_Noise_TestSet = TestSet(
     #     test_x = noisy_test_x,
     #     predictions_df = noisy_predictions_df,
-    #     general_scores = noisy_scores,
+    #     scores = noisy_scores,
     #     noise = noise,
     #     color = "orange",
     #     marker = "x",
@@ -530,7 +532,7 @@ def compare_joint_kde_distribution(test_set_list, feature):
     # large_prop_Noise_TestSet = TestSet(
     #     test_x = noisy_test_x,
     #     predictions_df = noisy_predictions_df,
-    #     general_scores = noisy_scores,
+    #     scores = noisy_scores,
     #     noise = noise,
     #     color = "green",
     #     marker = "s",
@@ -553,7 +555,7 @@ def compare_joint_kde_distribution(test_set_list, feature):
     # small_invprop_Noise_TestSet = TestSet(
     #     test_x = noisy_test_x,
     #     predictions_df = noisy_predictions_df,
-    #     general_scores = noisy_scores,
+    #     scores = noisy_scores,
     #     noise = noise,
     #     color = "orange",
     #     marker = "x",
@@ -568,7 +570,7 @@ def compare_joint_kde_distribution(test_set_list, feature):
     # large_invprop_Noise_TestSet = TestSet(
     #     test_x = noisy_test_x,
     #     predictions_df = noisy_predictions_df,
-    #     general_scores = noisy_scores,
+    #     scores = noisy_scores,
     #     noise = noise,
     #     color = "green",
     #     marker = "s",
@@ -591,7 +593,7 @@ def compare_joint_kde_distribution(test_set_list, feature):
     # Random_Noise_TestSet = TestSet(
     #     test_x = noisy_test_x,
     #     predictions_df = noisy_predictions_df,
-    #     general_scores = noisy_scores,
+    #     scores = noisy_scores,
     #     noise = noise,
     #     color = "orange",
     #     marker = "x",
