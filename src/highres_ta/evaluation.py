@@ -11,6 +11,14 @@ from cartopy.crs import PlateCarree
 
 INDEXES_LITERAL = Literal["expocode", "time", "lat", "lon", "salinity_bin", 'is_coastal']
 
+# annual mean features just let salinity vary on uncertainty scale -> maps
+# for different salinity products we want metrics (change them in the test)
+# swap insitu for gridded and test on gridded data
+# also which sss product performs better for ou model/ on coatal/non-coastal eg
+# for full map outputs: compute mean states for all features except salinity
+# input sss can also be a season clim and seasonal mean+noise -> see seasonal amplitude and see seasonal sensitivity (does it get worse summer/winter)
+# save the test train split
+
 
 @dataclass
 class TestSet:

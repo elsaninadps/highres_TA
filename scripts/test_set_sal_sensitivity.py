@@ -68,12 +68,58 @@ def main():
     props = get_set_props(0)
     original_test_dict.update(props)
     OriginalTestSet = TestSet(**original_test_dict)
-    
+
     
     # Noise analysis
     
     
+    # noise_impact_analysis(random_noise_test_set_list, 
+    #                       study_name= "random_noise_impact_analysis.pdf"
+    #                       )
+    
+
+    # noise_impact_analysis(uniform_noise_test_set_list, 
+    #                       features_list= FEATURES,
+    #                       study_name="uniform_0.5_noise_impact_analysis.pdf"
+    #                       )
+    # noise_impact_analysis(prop_dev_test_set_list, features_list = FEATURES,    
+    #                       study_name= "prop_sal_dev_noise_impact_analysis.pdf"
+    #                       )
+    
+    # noise_impact_analysis(inv_prop_dev_test_set_list, features_list = FEATURES
+    #                       study_name= "inv_prop_sal_dev_noise_impact_analysis.pdf"
+    #                       )
+
+
+    
+def make_uniform_noise_test_set(OriginalTestSet, noise_dict):   
+    from highres_ta.evaluation import get_set_props
     # UNIFORM NOISE---------------
+    
+    test_x = OriginalTestSet.test_x
+    
+    i=1
+    for label, noise in noise_dict.items:
+        
+
+        
+        def make_testset_list(noise_dict_list, original_test_set):
+    
+    
+
+    test_set_list = [original_test_set]
+    for i, noise_dict in enumerate(noise_dict_list):
+        
+        test_set_dict = run_noisy_test(**noise_dict)
+        plot_props = get_set_props(i+1) #zero always for oringinal test set
+        test_set_dict.update(plot_props)
+        
+        test_set = TestSet(**test_set_dict)
+        test_set_list.append(test_set)
+        
+    return test_set_list
+        
+        
     
     uniform_plus_noise = test_x['salinity']*0 + 0.5
     uniform_plus_dict ={
@@ -87,9 +133,17 @@ def main():
         'label': "Uniform -0.5 Noise"
     }
     
+    uniform_noise_test_set_list = make_testset_list(
+        noise_dict_list= [uniform_plus_dict, uniform_minus_dict],
+        original_test_set=OriginalTestSet
+    )
+        
+    return test_set_list
+
+
+def make_proportional_noise_test_set():
     
-    
-    # -------------------------
+        # -------------------------
     # PROPORTIONAL TO SAL DEVIATION NOISE
     # -------------------------
 
@@ -103,8 +157,17 @@ def main():
     large_prop_dict = {
         "noise": large_prop_noise,
         "label": "Proportional Noise (sal deviation * 0.7)",
-    }
+    } 
+    
+    prop_dev_test_set_list = make_testset_list(
+        noise_dict_list=[large_prop_dict, small_prop_dict],
+        original_test_set=OriginalTestSet,
+    )
 
+
+def make_inv_prop_noise_test_set():
+    
+    
     # -------------------------
     # SAL DEVIATION INV PROP NOISE
     # -------------------------
@@ -122,9 +185,17 @@ def main():
         "noise": large_invprop_noise,
         "label": "Inv Prop Noise (1 / sal deviation * 0.7)",
     }
+    
+    inv_prop_dev_test_set_list = make_testset_list(
+        noise_dict_list=[large_invprop_dict, small_invprop_dict],
+        original_test_set=OriginalTestSet,
+    )
 
 
-    # -------------------------
+def make_random_noise_test_set():
+    
+    
+     # -------------------------
     # RANDOM NOISE
     # -------------------------
 
@@ -135,44 +206,14 @@ def main():
     }
 
 
-    prop_dev_test_set_list = make_testset_list(
-        noise_dict_list=[large_prop_dict, small_prop_dict],
-        original_test_set=OriginalTestSet,
-    )
-        
-    inv_prop_dev_test_set_list = make_testset_list(
-        noise_dict_list=[large_invprop_dict, small_invprop_dict],
-        original_test_set=OriginalTestSet,
-    )
-
     random_noise_test_set_list = make_testset_list(
         noise_dict_list=[random_noise_dict],
         original_test_set=OriginalTestSet,
     )
 
-    
-    uniform_noise_test_set_list = make_testset_list(
-        noise_dict_list= [uniform_plus_dict, uniform_minus_dict],
-        original_test_set=OriginalTestSet
-    )
-    
-    # noise_impact_analysis(random_noise_test_set_list, 
-    #                       study_name= "random_noise_impact_analysis.pdf"
-    #                       )
-    
 
-    noise_impact_analysis(uniform_noise_test_set_list, 
-                          features_list= FEATURES,
-                          study_name="uniform_0.5_noise_impact_analysis.pdf"
-                          )
-    # noise_impact_analysis(prop_dev_test_set_list, features_list = FEATURES,    
-    #                       study_name= "prop_sal_dev_noise_impact_analysis.pdf"
-    #                       )
-    
-    # noise_impact_analysis(inv_prop_dev_test_set_list, features_list = FEATURES
-    #                       study_name= "inv_prop_sal_dev_noise_impact_analysis.pdf"
-    #                       )
-
+        
+        
 def run_noisy_test(label, noise):
     
     trained_model = TRAINED_MODEL
@@ -201,21 +242,7 @@ def run_noisy_test(label, noise):
     
     return testset_dict
 
-def make_testset_list(noise_dict_list, original_test_set):
-    
-    from highres_ta.evaluation import get_set_props
 
-    test_set_list = [original_test_set]
-    for i, noise_dict in enumerate(noise_dict_list):
-        
-        test_set_dict = run_noisy_test(**noise_dict)
-        plot_props = get_set_props(i+1) #zero always for oringinal test set
-        test_set_dict.update(plot_props)
-        
-        test_set = TestSet(**test_set_dict)
-        test_set_list.append(test_set)
-        
-    return test_set_list
 
 def noise_impact_analysis(test_set_list, features_list, study_name = "example_salinity_imapct_analysis.pdf"):
 

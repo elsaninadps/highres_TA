@@ -30,7 +30,7 @@ from scipy.special import huber
 from highres_ta import BaggingCatBoostResidualRegressor
 from highres_ta import estimators as models
 from inference import train_test_split
-from optuna_inference import prepare_data, save_figs_to_pdf
+from scripts.optuna_tuning import prepare_data, save_figs_to_pdf
 import pandas as pd
 import numpy as np
 from dataclasses import dataclass
@@ -42,6 +42,7 @@ from highres_ta.evaluation import get_set_props
 import matplotlib.pyplot as plt
 from cartopy import crs as ccrs
 from inference import make_target_grid
+import xarray as xr
 
 # %%
 ROOT = pathlib.Path(dotenv.find_dotenv("pyproject.toml")).parent
@@ -84,20 +85,20 @@ def main():
     FEATURES = trained_model.feature_names_in_.tolist()
     INFERENCE_TIME = pd.Timestamp("2004-02-01")
     
-    #inference_x = get_inference_x(INFERENCE_TIME, train_x)
+    inference_x = get_inference_x(INFERENCE_TIME, train_x)
     
-    inference_x_ds = get_inference_x_ds()
+    #inference_x = make_inference_x_ds(train_x)
     
     pred_ds = inference_from_x_data(trained_model, inference_x)
     
     noisy_inf_x = inference_x.copy()
-    noise = 0.05*noisy_inf_x['salinity']
+    noise = 0.5
     noisy_inf_x['salinity'] += noise
     noisy_pred_ds = inference_from_x_data(trained_model, noisy_inf_x)
     
     set_props = get_set_props(0)
     original_inf_set = InferenceSet(**{
-        'inference_x':inference_x_ds,
+        'inference_x':inference_x,
         'pred_ds': pred_ds,
         'label': 'original SSS'
     },**set_props)
@@ -110,23 +111,18 @@ def main():
         'label': "1.05*SSS noise"
     }, **set_props)
     
-    
-    
-    
+
     # compare_predictions_map(original_inf_set, noisy_inf_set, plotted_columns=['salinity', 'full_avg', 'full_std'])
     # compare_predictions_map(original_inf_set, noisy_inf_set, plotted_columns=['salinity', 'boosted_avg', 'boosted_std'])
     # compare_predictions_map(original_inf_set, noisy_inf_set, plotted_columns=['salinity', 'linear_avg', 'linear_std'])
     
     #fig0 = compare_noise_distributions([original_inf_set, noisy_inf_set])
-    #fig1 = compare_predictions_map(original_inf_set, noisy_inf_set, plotted_columns=['salinity', 'full_avg','linear_avg', 'boosted_avg'])
+    fig1 = compare_predictions_map(original_inf_set, noisy_inf_set, plotted_columns=['salinity', 'full_avg','linear_avg', 'boosted_avg'])
 
-
-
-   
 
 
 # %%
-def make_inference_x_ds(years = range(1990, 2011)):
+def make_inference_x_ds(train_x, years = range(2000, 2021)):
     
     import pandas as pd
     import xarray as xr
@@ -146,9 +142,6 @@ def make_inference_x_ds(years = range(1990, 2011)):
     
     return inference_ds
     
-    
-
-
 def map_variable(ds, ax, cmap, vmin = None, vmax = None):
 
     target_grid = make_target_grid()
@@ -487,13 +480,16 @@ def inference_from_x_data(model, inference_x):
     logger.info("Getting inference data...")
 
     logger.info("Predicting all components for inference data...")
-    pred_y = model.predict_components(inference_x.to_dataframe)
+    pred_y = model.predict_components(inference_x)
     logger.info("Inference completed.")
 
-    ds = pred_y.to_xarray().sortby(["time","lat", "lon"])
+    ds = pred_y.to_xarray().sortby(["lat", "lon"])
     
     return ds
 
+
+
+# %%
+
 if __name__ == "__main__":
     main()
-
