@@ -4,16 +4,19 @@ import dotenv
 import pandas as pd
 import numpy as np
 import xarray as xr
-from sklearn.model_selection import GridSearchCV, StratifiedGroupKFold
+from sklearn.model_selection import StratifiedGroupKFold
 import yaml
-import munch
+import pooch
+from dataclasses import dataclass
+from typing import Iterable, Literal, Type
+from functools import lru_cache
+
 
 # %%
 # global variables
 ROOT = Path(dotenv.find_dotenv("pyproject.toml")).parent
 DATA_PATH = ROOT / "data/training/GLODAPv2023-raw_collocated-{y}.pq"
 #CONFIG_PATH = ROOT / "scripts/config/example_training_config.yaml"
-
 
 
 DF_INDEX_COLUMNS = (
@@ -29,7 +32,21 @@ COMPULSORY_COLUMNS = {
 } | set(DF_INDEX_COLUMNS)
 
 
-ALL_FEATURES = ['salinity', 'temperature', 'bottomdepth', 'mld_dens_soda', 'ssh_adt', 'ssh_sla', 'chl_globcolour', 'coordsA', 'coordsB', 'coordsC']
+ALL_FEATURES = [
+    "salinity",
+    "temperature",
+    "bottomdepth",
+    "ssh_adt",
+    "ssh_sla",
+    "chl_globcolour",
+    "nitrate",
+    "silicate",
+    "phosphate",
+    "ncoord_a",
+    "ncoord_b",
+    "ncoord_c"
+    ]
+
 
 SALINITY_BIN_EDGES = (
     0,
@@ -42,94 +59,18 @@ SALINITY_BIN_EDGES = (
 SALINITY_NORM_VALUE = 34.5
 
 
-def load_config(fname_config_yaml):
-    
-    with open(fname_config_yaml, "r") as f:
-        config = yaml.safe_load(f)
-        
-    config = munch.munchify(config)
+@dataclass
+class ModelConfig:
+    yname_target: Literal["talk", "talk_normalized"] 
+    xname_features: list[str]
+    run_name: str
+    #num_cv_folds: int = 5
+    salinity_bins: tuple[float, ...] = SALINITY_BIN_EDGES
+    salinity_name: str = "salinity"
+    salinity_norm_value: float = 34.5
+    fig_save_path: str | Path = f"{ROOT}/outputs"
+    model_save_path: str | Path = f"{ROOT}/models"
 
-    return config
-
-
-def load_data() -> pd.DataFrame:
-
-    
-    data_path = str(DATA_PATH)
-    #compulsory_columns = COMPULSORY_COLUMNS
-
-    logger.info(f"Loading data from {data_path.format(y='YYYY')} for years 1982-2021")
-    data = pd.concat([pd.read_parquet(data_path.format(y=y)) for y in range(1982, 2022)])   
-    
-    return data
-
-    
-
-def preprocess_data(df: pd.DataFrame, config:dict) -> pd.DataFrame:
-    
-
-    salinity_bins = SALINITY_BIN_EDGES
-    salinity_norm_value = SALINITY_NORM_VALUE
-    
-    n_coords = compute_n_coords(df["lat"], df["lon"])
-    df["ncoord_a"] = n_coords[0]
-    df["ncoord_b"] = n_coords[1]
-    df["ncoord_c"] = n_coords[2]
-    
-    #filter outliers
-    df = filter_outliers(df, **config.outliers_filter)
-    
-    # salinity binning
-    salinity = df['salinity']
-    df["salinity_bin"] = salinity_binning(salinity, bins=salinity_bins)
-    
-    # alkalinity normalization
-    df["talk_normalized"] = normalize_alkalinity(df["talk"], salinity, salinity_norm_value)
-    
-    # n_coords = compute_n_coords(df["lat"], df["lon"])
-    # df = df.join(n_coords)
-
-    # set quadruple index 
-    index_columns = DF_INDEX_COLUMNS
-    index_columns = list(DF_INDEX_COLUMNS + ("salinity_bin",))
-    df = df.set_index(index_columns)
-    
-
-    # select columns and drop rows with missing values in the selected columns
-    keep_cols = set(config.xname_features + [config.yname_target])
-    valid_columns = list(keep_cols - set(index_columns))
-    
-    df = df[valid_columns].dropna()
-    
-    
-    
-    #logger.debug(f"Preprocessed data head: \n{df.head()}")
-
-
-    return df
-
-#%%
-# def filter_outliers(df: pd.DataFrame, column: str, lower_abs: float, upper_abs: float) -> pd.DataFrame:
-#     if lower_abs is not None:
-#         df = df[df[column] >= lower_abs]
-#     if upper_abs is not None:
-#         df = df[df[column] <= upper_abs]
-
-    return df
-
-
-def filter_outliers(df, lower_sal, upper_sal, lower_depth):
-    
-    filter = (df["salinity"] > lower_sal) & (df["salinity"] < upper_sal) & (df["bottomdepth"] > lower_depth)
-    df = df[filter]
-    
-    logger.info(f"Filter outliers ({lower_sal} < salinity < {upper_sal}) & ({lower_depth} < bottomdepth)")
-    
-    return df
-
-    
-    
-#%%
 def salinity_binning(
     salinity: pd.Series, bins: tuple[float, ...], bin_labels: None | list[str | float] = None
 ) -> pd.Series:
@@ -138,47 +79,12 @@ def salinity_binning(
     return pd.cut(salinity, bins=bins, labels=bin_label)
 
 
-#%%
 def normalize_alkalinity(
     alkalinity: pd.Series, salinity: pd.Series, norm_value: float
 ) -> pd.Series:
     return norm_value * alkalinity / salinity
 
-
-# def compute_n_coords(lat: pd.Series, lon: pd.Series) -> pd.DataFrame:
-    
-#     """spherical coordinates"""
-#     lat_rad = np.radians(lat)
-#     lon_rad = np.radians(lon)
-#     ncoordA = np.cos(lat_rad) * np.cos(lon_rad)
-#     ncoordB = np.cos(lat_rad) * np.sin(lon_rad)
-#     ncoordC = np.sin(lat_rad)
-    
-#     spherical_coords_df =  pd.DataFrame({
-#         'coordsA': ncoordA,
-#         'coordsB': ncoordB,
-#         'coordsC': ncoordC
-#         })
-    
-#     return spherical_coords_df
-
-
-# def compute_n_coords(lat: pd.Series, lon: pd.Series) -> pd.DataFrame:
-#     """spherical coordinates"""
-#     lat_rad = np.radians(lat)
-#     lon_rad = np.radians(lon)
-#     ncoordA = np.cos(lat_rad) * np.cos(lon_rad)
-#     ncoordB = np.cos(lat_rad) * np.sin(lon_rad)
-#     ncoordC = np.sin(lat_rad)
-    
-#     spherical_coords_df =  pd.DataFrame({
-#         'coordsA': ncoordA,
-#         'coordsB': ncoordB,
-#         'coordsC': ncoordC
-#         })
-    
-#     return spherical_coords_df
-
+   
 def compute_n_coords(lat, lon):
     """
     Spherical coordinates 
@@ -190,8 +96,13 @@ def compute_n_coords(lat, lon):
     z = np.sin(lat_rad)
     return x, y, z
 
+def add_n_coords(df: pd.DataFrame) -> pd.DataFrame:
+    n_coords = compute_n_coords(df["lat"], df["lon"])
+    df["ncoord_a"] = n_coords[0]
+    df["ncoord_b"] = n_coords[1]
+    df["ncoord_c"] = n_coords[2]
+    return df
 
-#%%
 def get_splits_by_expocode_salinity_bin_based(
     data: pd.DataFrame, random_state: int = 42, n_folds: int = 5
 ) -> list[tuple[np.ndarray, np.ndarray]]:
@@ -214,29 +125,439 @@ def get_splits_by_expocode_salinity_bin_based(
     return list(splits)
 
 
-
-def get_train_test_data(data, config)-> tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]:
-    
-    train_test_splitter = get_splits_by_expocode_salinity_bin_based(data)
-    
-    logger.info(f"Selecting the {config.ith_split}^th split iteration")
-    idx_train, idx_test = train_test_splitter[config.ith_split]
-
-    train_df = data.iloc[idx_train]
-    test_df = data.iloc[idx_test]
-
-    train_x = train_df[config.xname_features]
-    train_y = train_df[config.yname_target]
-    
-    test_x = test_df[config.xname_features]
-    test_y = test_df[config.yname_target]
-    
-    logger.success(f"X_features {config.xname_features} enforced in train_x, test_x")
-    logger.success(f"Target variable {config.yname_target} enforced in train_y, test_y")
-    
-    # assert 'talk' in train_x.columns or 'talk_normalized' in train_x.columns
-     
-    # if ('talk' in colname for colname in train_x.columns) or ('talk' in colname for colname in test_x.columns) :
-    #      raise ValueError('alk variable in training or test x_datasets')
- 
+def train_test_split(
+    df: pd.DataFrame, config: ModelConfig
+) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]:
+    itrain, itest = get_splits_by_expocode_salinity_bin_based(df, n_folds=7)[1]
+    train_x = df.iloc[itrain][config.xname_features]
+    train_y = df.iloc[itrain][config.yname_target]
+    test_x = df.iloc[itest][config.xname_features]
+    test_y = df.iloc[itest][config.yname_target]
     return train_x, train_y, test_x, test_y
+
+
+def filter_outliers(df: pd.DataFrame) -> pd.DataFrame:
+    filter = (
+        (df["salinity"] > 25)
+        & (df["salinity"] < 40)
+        & (df["bottomdepth"] > 100)
+        & (df["talk"] > 1500)
+        & (df["talk"] < 3000)
+    )
+    df = df[filter]
+    return df
+
+
+def load_config(fname_config_yaml: str | Path) -> ModelConfig:
+
+    with open(fname_config_yaml, "r") as f:
+        config_dict = yaml.safe_load(f)
+
+    config = ModelConfig(**config_dict)
+    
+    return config
+
+
+def load_data(compulsory_columns: set[str] = COMPULSORY_COLUMNS) -> pd.DataFrame:
+    
+    """
+    Loads the training data from a parquet file
+
+    Contains all the columns and rows of the training data
+    No engineering or preprocessing is done here, just loading
+    the data into a pandas dataframe
+
+    Parameters
+    ----------
+    fname_data_parquet : str | Path
+        The path to the parquet file containing the training data
+    Returns
+    -------
+    pd.DataFrame
+        The training data as a pandas dataframe
+    """
+    
+    data_path = str(DATA_PATH)
+
+    logger.info(f"Loading data from {data_path.format(y='YYYY')} for years 1982-2021")
+    data = pd.concat([pd.read_parquet(data_path.format(y=y)) for y in range(1982, 2022)])
+
+    # Check that the compulsory columns are present in the data
+    columns = data.columns.intersection(compulsory_columns)
+
+    if len(columns) < len(compulsory_columns):
+        missing_cols = compulsory_columns - set(columns)
+        raise ValueError(f"Missing columns in the data: {missing_cols}")
+
+    #logger.debug(f"data.head() = \n{data.head().T.head(50)}")
+    return data
+
+
+
+def preprocess_data(df: pd.DataFrame, config: ModelConfig, dropna: bool = True) -> pd.DataFrame:
+    
+    """
+    Select columns, engineer features, bin salinity
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The raw training df as a pandas dataframe
+    config : ModelSelectionConfig
+        The configuration for the model selection process, containing any parameters needed for preprocessing
+
+    Returns
+    -------
+    pd.DataFrame
+        The preprocessed training df
+    """
+
+    if not (config.salinity_name == 'salinity'):
+        df = df.drop('salinity', axis = 1)
+        df = df.rename(columns = {config.salinity_name : 'salinity'})
+        
+
+    # filter outliers
+    df = filter_outliers(df)
+
+    
+    # salinity binning
+    salinity_bins = config.salinity_bins
+    salinity = df['salinity']
+    df["salinity_bin"] = salinity_binning(salinity, bins=salinity_bins)
+    
+    # alkalinity normalization
+    salt_norm_value = config.salinity_norm_value
+    df["talk_normalized"] = normalize_alkalinity(df["talk"], salinity, salt_norm_value)
+
+    df["lon"] = ((df["lon"] + 180) % 360) - 180
+    
+    # add spherical coordinates
+    df = add_n_coords(df)
+    
+    df = add_coastal_flag(df)
+    
+    # coordinates transformation
+    #df["lon"] = (df["lon"] - 180)
+    
+
+    # set quadruple index 
+    index_columns = DF_INDEX_COLUMNS
+    index_columns = list(DF_INDEX_COLUMNS + ("salinity_bin","is_coastal","depth"))
+    df = df.set_index(index_columns)
+
+    # select columns and drop rows with missing values in the selected columns
+    keep_cols = set(config.xname_features + [config.yname_target]).union(COMPULSORY_COLUMNS)
+    valid_columns = list(keep_cols - set(index_columns))
+    df = df[valid_columns]
+    
+    if dropna == True:
+        df = df.dropna()
+
+   
+
+    #logger.debug(f"Preprocessed data head: \n{df.head()}")
+
+    return df
+
+
+
+def load_preprocessed_df(fname, features_list , dropna = True):
+    
+    
+    df = pd.read_parquet(fname)
+    missing_cols = set(features_list) - set(df.columns)
+    if missing_cols:
+        raise ValueError(f"Missing columns in the preprocessed dataframe: {missing_cols}")
+    
+    
+    df = df[features_list]
+    if dropna:
+        df = df.dropna()
+    
+    return df
+
+
+
+# def preprocess_data_debbug(df: pd.DataFrame, config: ModelConfig) -> pd.DataFrame:
+
+#     print("\n" + "=" * 80)
+#     print(f"PREPROCESSING WITH SALINITY COLUMN: {config.salinity_name}")
+#     print("=" * 80)
+
+#     print(f"START: {len(df)} rows")
+
+#     if config.salinity_name != "salinity":
+#         df = df.drop("salinity", axis=1)
+#         df = df.rename(columns={config.salinity_name: "salinity"})
+
+#     print(f"AFTER SALINITY SWAP: {len(df)} rows")
+
+#     # ------------------------------------------------------------------
+#     # FILTER OUTLIERS
+#     # ------------------------------------------------------------------
+
+#     before = len(df)
+
+#     df = filter_outliers(df)
+
+#     after = len(df)
+
+#     print(
+#         f"AFTER OUTLIER FILTER: {after} rows "
+#         f"(removed {before - after})"
+#     )
+
+#     # ------------------------------------------------------------------
+#     # SALINITY BINNING
+#     # ------------------------------------------------------------------
+
+#     salinity_bins = config.salinity_bins
+#     salinity = df["salinity"]
+
+#     before = len(df)
+
+#     df["salinity_bin"] = salinity_binning(
+#         salinity,
+#         bins=salinity_bins
+#     )
+
+#     after = len(df)
+
+#     print(
+#         f"AFTER BINNING: {after} rows "
+#         f"(removed {before - after})"
+#     )
+
+#     # ------------------------------------------------------------------
+#     # ALKALINITY NORMALIZATION
+#     # ------------------------------------------------------------------
+
+#     before = len(df)
+
+#     salt_norm_value = config.salinity_norm_value
+
+#     df["talk_normalized"] = normalize_alkalinity(
+#         df["talk"],
+#         salinity,
+#         salt_norm_value,
+#     )
+
+#     after = len(df)
+
+#     print(
+#         f"AFTER NORMALIZATION: {after} rows "
+#         f"(removed {before - after})"
+#     )
+
+#     # ------------------------------------------------------------------
+#     # LONGITUDE TRANSFORM
+#     # ------------------------------------------------------------------
+
+#     before = len(df)
+
+#     df["lon"] = ((df["lon"] + 180) % 360) - 180
+
+#     after = len(df)
+
+#     print(
+#         f"AFTER LON TRANSFORM: {after} rows "
+#         f"(removed {before - after})"
+#     )
+
+#     # ------------------------------------------------------------------
+#     # SPHERICAL COORDINATES
+#     # ------------------------------------------------------------------
+
+#     before = len(df)
+
+#     df = add_n_coords(df)
+
+#     after = len(df)
+
+#     print(
+#         f"AFTER NCOORDS: {after} rows "
+#         f"(removed {before - after})"
+#     )
+
+#     # ------------------------------------------------------------------
+#     # COASTAL FLAG
+#     # ------------------------------------------------------------------
+
+#     before = len(df)
+
+#     df = add_coastal_flag(df)
+
+#     after = len(df)
+
+#     print(
+#         f"AFTER COASTAL FLAG: {after} rows "
+#         f"(removed {before - after})"
+#     )
+
+#     # ------------------------------------------------------------------
+#     # INDEX CREATION
+#     # ------------------------------------------------------------------
+
+#     index_columns = list(
+#         DF_INDEX_COLUMNS + ("salinity_bin", "is_coastal", "depth")
+#     )
+
+#     before = len(df)
+
+#     df = df.set_index(index_columns)
+
+#     after = len(df)
+
+#     print(
+#         f"AFTER INDEX SET: {after} rows "
+#         f"(removed {before - after})"
+#     )
+
+#     print(
+#         f"DUPLICATE INDICES: "
+#         f"{df.index.duplicated(keep=False).sum()}"
+#     )
+
+#     # ------------------------------------------------------------------
+#     # COLUMN SELECTION
+#     # ------------------------------------------------------------------
+
+#     keep_cols = (
+#         set(config.xname_features + [config.yname_target])
+#         .union(COMPULSORY_COLUMNS)
+#     )
+
+#     valid_columns = list(
+#         keep_cols - set(index_columns)
+#     )
+
+#     before = len(df)
+
+#     df = df[valid_columns]
+
+#     after = len(df)
+
+#     print(
+#         f"AFTER COLUMN SELECTION: {after} rows "
+#         f"(removed {before - after})"
+#     )
+
+#     # ------------------------------------------------------------------
+#     # DROPNA
+#     # ------------------------------------------------------------------
+
+#     before = len(df)
+
+#     na_counts = df.isna().sum()
+#     na_counts = na_counts[na_counts > 0].sort_values(ascending=False)
+
+#     print("\nColumns containing NaNs before dropna():")
+#     print(na_counts.head(20))
+
+#     df = df.dropna()
+
+#     after = len(df)
+
+#     print(
+#         f"\nAFTER DROPNA: {after} rows "
+#         f"(removed {before - after})"
+#     )
+
+#     print(
+#         f"FINAL DUPLICATE INDICES: "
+#         f"{df.index.duplicated(keep=False).sum()}"
+#     )
+
+#     print(f"FINAL ROW COUNT: {len(df)}")
+
+#     return df
+
+# def add_coastal_flag(df, to_index = False):
+#     # add coastal flag
+#     coast_mask = get_coastal_mask()
+#     selector = df[["lat", "lon"]].reset_index(drop=True).to_xarray()
+#     df["is_coastal"] = coast_mask.sel(selector, method="nearest", tolerance=0.6)
+    
+#     if to_index:
+#         df = df.set_index(["is_coastal"], append=True)
+        
+#     return df
+
+@lru_cache(1)
+def get_coastal_mask() -> xr.DataArray:
+    
+    from .utils import make_target_grid
+    
+    target_grid = make_target_grid()
+    url = "https://raw.githubusercontent.com/RECCAP2-ocean/R2-shared-resources/refs/heads/master/data/regions/RECCAP2_region_masks_all_v20221025.nc"
+    fname = pooch.retrieve(url, None, fname="RECCAP2_region_masks_all_v20221025.nc")
+    ds = xr.open_dataset(fname)
+    coast = ds.coast.assign_coords(lon=lambda x: (x.lon + 180) % 360 - 180).sortby("lon").compute()
+    coast = coast.interp_like(target_grid, method="nearest").astype(bool)
+    return coast
+
+
+def add_coastal_flag(
+    df: pd.DataFrame,
+    to_index: bool = False,
+) -> pd.DataFrame:
+
+    coast_mask = get_coastal_mask()
+
+    # retrieve coordinates whether they are columns or index levels
+    if "lat" in df.columns:
+        lat = df["lat"].values
+    else:
+        lat = df.index.get_level_values("lat").values
+
+    if "lon" in df.columns:
+        lon = df["lon"].values
+    else:
+        lon = df.index.get_level_values("lon").values
+
+    # # ensure longitude convention matches coast_mask
+    # lon = ((lon + 180) % 360) - 180
+
+    selector = {
+        "lat": xr.DataArray(lat, dims="points"),
+        "lon": xr.DataArray(lon, dims="points"),
+    }
+
+    df["is_coastal"] = coast_mask.sel(
+        selector,
+        method="nearest",
+        tolerance=0.6,
+    ).values.astype(bool)
+
+    if to_index:
+        df = df.set_index(["is_coastal"], append=True)
+
+    return df
+
+
+# def load_config(fname_config_yaml):
+    
+#     with open(fname_config_yaml, "r") as f:
+#         config = yaml.safe_load(f)
+        
+#     config = munch.munchify(config)
+
+#     return config
+
+
+# def load_data() -> pd.DataFrame:
+
+    
+#     data_path = str(DATA_PATH)
+#     #compulsory_columns = COMPULSORY_COLUMNS
+
+#     logger.info(f"Loading data from {data_path.format(y='YYYY')} for years 1982-2021")
+#     data = pd.concat([pd.read_parquet(data_path.format(y=y)) for y in range(1982, 2022)])   
+    
+#     return data
+
+# TODO: add possibility to save train test split
+# TODO: clarify the save_path procedure (eg mkdir, image outputs vs models outputs etc)/maybe a run_name
+# TODO: maybe a function that does loading and preprocessing and saving in one go to use in external codes
+# TODO: clarify coordinates transormation!!

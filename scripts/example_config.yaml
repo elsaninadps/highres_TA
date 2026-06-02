@@ -1,0 +1,25 @@
+yname_target: talk
+xname_features:
+- salinity
+- temperature
+- bottomdepth
+# depth
+- ssh_adt
+# ssh_sla
+# chl_globcolour
+- nitrate
+# silicate
+- phosphate
+- ncoord_a
+- ncoord_b
+- ncoord_c
+run_name : "example_bagged_reg_run"
+
+
+# yname_target: Literal["talk", "talk_normalized"] 
+# xname_features: list[str]
+# #num_cv_folds: int = 5
+# salinity_bins: tuple[float, ...] = SALINITY_BIN_EDGES
+# salinity_name: str = "salinity"
+# salinity_norm_value: float = 34.5
+# save_path: str | Path = ROOT

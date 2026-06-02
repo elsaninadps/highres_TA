@@ -531,7 +531,7 @@ def main():
         fig, ax = predict_time_series_station(group, name=site)
         figlist.append(fig)
 
-    from inference import save_figs_to_pdf
+    from highres_ta.inference import save_figs_to_pdf
 
     save_figs_to_pdf(figlist, ROOT / "timeseries_predictions.pdf")
 

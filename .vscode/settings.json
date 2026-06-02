@@ -1,0 +1,19 @@
+{
+  "files.readonlyInclude": {
+    "src/highres_ta/estimators.py": true,
+    "src/highres_ta/inference.py": true,
+    
+    "src/highres_ta/utils.py": true,
+    "src/highres_ta/evaluation.py": true,
+    "src/highres_ta/preprocessing.py": true,
+
+
+    "src/highres_ta/training.py": true,
+    "scripts/bagged_regressors_experiments.py": true,
+    "scripts/example_config.yaml": true,
+
+    "scripts/optuna_tuning.py": true
+
+    
+  }
+}

@@ -13,7 +13,7 @@ from model_selection import (
 from scipy.special import huber
 from highres_ta import BaggingCatBoostResidualRegressor
 from highres_ta import estimators as models
-from inference import train_test_split
+from highres_ta.inference import train_test_split
 from highres_ta.evaluation import make_prediction_df, scoring_from_df, TestSet, get_set_props, add_some_index_levels
 from optuna_inference import prepare_data, save_figs_to_pdf
 import pandas as pd

@@ -112,7 +112,7 @@ class ModelSelectionConfig:
 def main():
     
     config_path = ROOT / f"scripts/{CONFIG_FNAME}"
-    config = load_config(config_path)
+    config = load_model_selection_config(config_path)
     data_raw = load_data()
     
     # IDEA: consider removing outliers or computing a weighting for these outliers
@@ -170,7 +170,7 @@ def main():
     # https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GridSearchCV.html
 
 
-def load_config(fname_config_yaml: str | Path) -> ModelSelectionConfig:
+def load_model_selection_config(fname_config_yaml: str | Path) -> ModelConfig:
     global SAVE_PATH, NFOLDS
 
     with open(fname_config_yaml, "r") as f:
@@ -191,42 +191,6 @@ def load_config(fname_config_yaml: str | Path) -> ModelSelectionConfig:
     NFOLDS = config.num_cv_folds
     
     return config
-
-
-def load_data(compulsory_columns: set[str] = COMPULSORY_COLUMNS) -> pd.DataFrame:
-    
-    """
-    Loads the training data from a parquet file
-
-    Contains all the columns and rows of the training data
-    No engineering or preprocessing is done here, just loading
-    the data into a pandas dataframe
-
-    Parameters
-    ----------
-    fname_data_parquet : str | Path
-        The path to the parquet file containing the training data
-    Returns
-    -------
-    pd.DataFrame
-        The training data as a pandas dataframe
-    """
-    
-    data_path = str(DATA_PATH)
-
-    logger.info(f"Loading data from {data_path.format(y='YYYY')} for years 1982-2021")
-    data = pd.concat([pd.read_parquet(data_path.format(y=y)) for y in range(1982, 2022)])
-
-    # Check that the compulsory columns are present in the data
-    columns = data.columns.intersection(compulsory_columns)
-
-    if len(columns) < len(compulsory_columns):
-        missing_cols = compulsory_columns - set(columns)
-        raise ValueError(f"Missing columns in the data: {missing_cols}")
-
-    logger.debug(f"data.head() = \n{data.head().T.head(50)}")
-    return data
-
 
 def preprocess_data(df: pd.DataFrame, config: ModelSelectionConfig) -> pd.DataFrame:
     
@@ -271,7 +235,6 @@ def preprocess_data(df: pd.DataFrame, config: ModelSelectionConfig) -> pd.DataFr
     logger.debug(f"Preprocessed data head: \n{df.head()}")
 
     return df
-
 
 def filter_outliers(df: pd.DataFrame, column: str, lower_abs: float, upper_abs: float) -> pd.DataFrame:
     if lower_abs is not None:
