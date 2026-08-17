@@ -13,8 +13,11 @@ models/
 # Virtual environments
 .venv
 .env
+.DS_Store
 
 data/
 **/catboost_info/*
 *.nc
-.DS_Store
+*.db
+*pkl
+*.pdf

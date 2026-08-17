@@ -428,7 +428,7 @@ def plot_predictions(pred_y: xr.Dataset):
     img3 = pred_y.linear_avg.plot.imshow(ax=axs[1, 0], **props_alk)
     img5 = pred_y.boosted_avg.plot.imshow(ax=axs[2, 0], vmin=-40, vmax=40, cmap="RdBu_r", **props)
 
-    props = dict(vmin=0, vmax=15, rasterized=True, transform=proj)
+    props = dict(vmin=0, vmax=8, rasterized=True, transform=proj)
     img2 = pred_y.full_std.plot.imshow(**props, ax=axs[0, 1])
     img4 = pred_y.linear_std.plot.imshow(**props, ax=axs[1, 1])
     img6 = pred_y.boosted_std.plot.imshow(**props, ax=axs[2, 1])
