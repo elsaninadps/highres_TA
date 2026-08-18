@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import tempfile
 from collections.abc import Sequence
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -12,7 +11,7 @@ from joblib import dump as joblib_dump
 from joblib import load as joblib_load
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.linear_model import LinearRegression
-from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.utils.validation import check_is_fitted
 
@@ -27,53 +26,69 @@ class CatBoostResidualRegressor(BaseEstimator, RegressorMixin):
         self,
         linear_features: Sequence[str] = ("salinity",),
         feature_names: Sequence[str] | None = None,
-        polynomial_degree: int = 2,
-        iterations: int = 300,
-        loss_function: str = "MAE",
-        random_strength: float = 1.5,
-        min_data_in_leaf: int = 50,
-        catboost_verbose: bool | int = False,
-        random_state: int | None = None,
-        n_jobs: int | None = None,
-        **catboost_kwargs: dict[str, Any],
+        polynomial_degree: int = 1,
+        **catboost_kwargs: dict[str, int | float | str],
     ) -> None:
         self.linear_features = linear_features
         self.feature_names = feature_names
         self.polynomial_degree = polynomial_degree
-        self.iterations = iterations
-        self.loss_function = loss_function
-        self.random_strength = random_strength
-        self.min_data_in_leaf = min_data_in_leaf
-        self.catboost_verbose = catboost_verbose
-        self.random_state = random_state
-        self.n_jobs = n_jobs
         self.catboost_kwargs = catboost_kwargs
+        self.linear_model_ = self._make_linear_model()
+        self.boosting_model_ = self._make_catboost_model()
 
-    def fit(self, X, y):
+        self.loss_function = self.boosting_model_.get_params().get("loss_function", None)
+
+    def fit(self, X, y, eval_set=None, sample_weight=None, **boost_kwargs):
         X_df = self._to_frame(X)
         y = np.asarray(y)
 
         self.feature_names_in_ = np.asarray(X_df.columns, dtype=object)
         self.n_features_in_ = X_df.shape[1]
 
-        self.linear_model_ = self._make_linear_model()
-        self.boosting_model_ = self._make_catboost_model()
-
         self.linear_model_.fit(X_df, y)
         yhat_linear = self.linear_model_.predict(X_df)
 
-        self.boosting_model_.fit(X_df, y - yhat_linear)
+        if eval_set is not None:
+            is_correct_type = isinstance(eval_set, tuple) and len(eval_set) == 2
+            if not is_correct_type:
+                raise ValueError(
+                    f"eval_set must be a tuple of (X_eval, y_eval), but got {type(eval_set)}"
+                )
+            else:
+                X_eval, y_eval = eval_set
+                X_eval_df = self._validate_feature_frame(X_eval)
+                yhat_eval_linear = self.linear_model_.predict(X_eval_df)
+                eval_set = (X_eval_df, y_eval - yhat_eval_linear)
+
+        self.boosting_model_.fit(
+            X_df,
+            y - yhat_linear,
+            eval_set=eval_set,
+            sample_weight=sample_weight,
+            **boost_kwargs,
+        )
 
         return self
 
     def predict(self, X):
-        check_is_fitted(self, attributes=["linear_model_", "boosting_model_", "linear_features_"])
+        check_is_fitted(self, attributes=["linear_model_", "boosting_model_"])
         X_df = self._validate_feature_frame(X)
 
         yhat_linear = self.linear_model_.predict(X_df)
         yhat_boosted = self.boosting_model_.predict(X_df)
 
-        return yhat_linear + yhat_boosted
+        return self._pred_helper(yhat_linear, yhat_boosted)
+
+    def score(self, X, y, sample_weight=None, metric: str = "r2_score") -> float:
+        from sklearn import metrics
+
+        func = getattr(metrics, metric)
+        y = np.array(y).squeeze()
+        yhat = self.predict(X)
+        if self.loss_function == "RMSEWithUncertainty":
+            yhat = yhat[:, 0]
+
+        return func(y, yhat)
 
     def save(self, file_path: str | os.PathLike[str], compress: int = 3) -> None:
         """Save estimator to disk with joblib."""
@@ -150,7 +165,7 @@ class CatBoostResidualRegressor(BaseEstimator, RegressorMixin):
             raise ValueError("feature_names length must match the number of columns in X.")
         return pd.DataFrame(X, columns=cols)
 
-    def _make_linear_model(self) -> Pipeline:
+    def _make_linear_model(self) -> LinearRegression:
         from sklearn.compose import make_column_selector, make_column_transformer
         from sklearn.decomposition import PCA
         from sklearn.preprocessing import StandardScaler
@@ -169,17 +184,10 @@ class CatBoostResidualRegressor(BaseEstimator, RegressorMixin):
             LinearRegression(),
         )
 
-    def _make_catboost_model(self):
-        return CatBoostRegressor(
-            iterations=self.iterations,
-            loss_function=self.loss_function,
-            random_strength=self.random_strength,
-            verbose=self.catboost_verbose,
-            min_data_in_leaf=self.min_data_in_leaf,
-            random_state=self.random_state,
-            thread_count=self.n_jobs,
-            **self.catboost_kwargs,
-        )
+    def _make_catboost_model(self) -> CatBoostRegressor:
+
+        kwargs = self.catboost_kwargs
+        return CatBoostRegressor(**kwargs)
 
 
 __all__ = ["CatBoostResidualRegressor"]
