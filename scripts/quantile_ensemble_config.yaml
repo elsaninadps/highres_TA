@@ -1,0 +1,60 @@
+# Seven independent seeds control the grouped folds, Optuna sampler, and CatBoost.
+seeds: [ 43, 44, 45, 46, 47, 48, 49 ]
+output_dir: models/quantile_ensemble
+
+data:
+  parquet_glob: data/training/*.pq
+  talk_adjustment_csv: data/glodapv2_adjustments_last_updated_on_2026_07_09.csv
+  target_name: talk
+  coordinate_columns: [ expocode, time, lat, lon, depth ]
+  quality_columns: [ talkqc, talkf ]
+  non_null_columns: [ talk, salinity, temperature, nitrate, ssh_adt ]
+  minimum_salinity: 20
+  maximum_salinity: 40
+  engineered_feature_names:
+  - ncoord_x
+  - ncoord_y
+  - ncoord_z
+  - dayofyear_sin
+  - dayofyear_cos
+  feature_names:
+  - salinity
+  - temperature
+  - ssh_adt
+  - nitrate
+  - phosphate
+  - silicate
+  - bottomdepth
+  - ncoord_x
+  - ncoord_y
+  - ncoord_z
+
+model:
+  linear_features: [ salinity ]
+  polynomial_degree: 1
+  quantiles: [ 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.975, 0.99 ]
+  maximum_iterations: 2000
+  early_stopping_rounds: 50
+  trial_thread_count: 1
+  final_thread_count: -1
+
+cross_validation:
+  # Every outer fold is scored; inner folds alone select hyperparameters.
+  outer_splits: 6
+  inner_splits: 5
+  final_tuning_splits: 5
+
+optimization:
+  n_trials: 250
+  n_jobs: 64
+
+evaluation:
+  minimum_bottomdepth: 300
+  intervals:
+    50pct: [ 0.25, 0.75 ]
+    80pct: [ 0.1, 0.9 ]
+    90pct: [ 0.05, 0.95 ]
+    95pct: [ 0.025, 0.975 ]
+
+ensemble:
+  aggregation: mean
