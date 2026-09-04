@@ -40,7 +40,6 @@ from loguru import logger
 
 import highres_ta as ta
 
-
 ROOT = Path(dotenv.find_dotenv("pyproject.toml")).parent
 DEFAULT_CONFIG = ROOT / "scripts" / "quantile_ensemble_config.yaml"
 
@@ -106,19 +105,16 @@ def prepare_data(config: dict[str, Any]) -> pd.DataFrame:
     coordinate_columns = data_config["coordinate_columns"]
     feature_names = data_config["feature_names"]
     engineered_feature_names = data_config["engineered_feature_names"]
-    raw_feature_names = [
-        name for name in feature_names if name not in engineered_feature_names
-    ]
+    raw_feature_names = [name for name in feature_names if name not in engineered_feature_names]
     target_name = data_config["target_name"]
     quality_columns = data_config["quality_columns"]
     required_columns = list(
-        dict.fromkeys(
-            coordinate_columns + raw_feature_names + [target_name] + quality_columns
-        )
+        dict.fromkeys(coordinate_columns + raw_feature_names + [target_name] + quality_columns)
     )
 
     data = (
-        ta.load_data(str(resolve_path(data_config["parquet_glob"])))[required_columns]
+        ta
+        .load_data(str(resolve_path(data_config["parquet_glob"])))[required_columns]
         .set_index(coordinate_columns, drop=False)
         .pipe(
             ta.drop_extreme_salinities,
@@ -283,9 +279,7 @@ def optimize(
         "model": config["model"],
         "seed": seed,
     }
-    signature = hashlib.sha256(
-        json.dumps(signature_payload, sort_keys=True).encode()
-    ).hexdigest()
+    signature = hashlib.sha256(json.dumps(signature_payload, sort_keys=True).encode()).hexdigest()
     existing_signature = study.user_attrs.get("study_signature")
     if existing_signature is not None and existing_signature != signature:
         raise ValueError(
@@ -294,9 +288,7 @@ def optimize(
         )
     study.set_user_attr("study_signature", signature)
     study.set_metric_names(["multi_quantile_loss"])
-    completed = sum(
-        trial.state == optuna.trial.TrialState.COMPLETE for trial in study.trials
-    )
+    completed = sum(trial.state == optuna.trial.TrialState.COMPLETE for trial in study.trials)
     remaining = max(0, target_completed_trials - completed)
     logger.info(
         "Study {} has {}/{} completed trials; running {}",
@@ -332,11 +324,7 @@ def score_subsets(
     target_name = config["data"]["target_name"]
     alpha = quantiles(config)
     intervals = interval_config(config)
-    scores = {
-        "all": ta.score_quantile_predictions(
-            data[target_name], prediction, alpha, intervals
-        )
-    }
+    scores = {"all": ta.score_quantile_predictions(data[target_name], prediction, alpha, intervals)}
     minimum_bottomdepth = config["evaluation"].get("minimum_bottomdepth")
     if minimum_bottomdepth is not None:
         mask = data["bottomdepth"].to_numpy() > minimum_bottomdepth
@@ -354,13 +342,11 @@ def prediction_frame(
     config: dict[str, Any],
 ) -> pd.DataFrame:
     target_name = config["data"]["target_name"]
-    frame = pd.DataFrame(
-        {
-            "row_id": row_ids,
-            "observed": data[target_name].to_numpy(),
-            "bottomdepth": data["bottomdepth"].to_numpy(),
-        }
-    )
+    frame = pd.DataFrame({
+        "row_id": row_ids,
+        "observed": data[target_name].to_numpy(),
+        "bottomdepth": data["bottomdepth"].to_numpy(),
+    })
     for index, alpha in enumerate(quantiles(config)):
         frame[f"q_{alpha:g}"] = prediction[:, index]
     return frame
@@ -436,9 +422,9 @@ def run_outer_fold(
 
     prediction_path = output_dir / "outer_predictions" / f"{stem}.parquet"
     prediction_path.parent.mkdir(parents=True, exist_ok=True)
-    prediction_frame(
-        outer_test, outer_test_index, prediction, config
-    ).to_parquet(prediction_path, index=False)
+    prediction_frame(outer_test, outer_test_index, prediction, config).to_parquet(
+        prediction_path, index=False
+    )
     write_json(
         output_dir / "outer_metrics" / f"{stem}.json",
         {
@@ -463,15 +449,11 @@ def prediction_columns(config: dict[str, Any]) -> list[str]:
     return [f"q_{alpha:g}" for alpha in quantiles(config)]
 
 
-def summarize_seed(
-    data: pd.DataFrame, config: dict[str, Any], seed: int, fingerprint: str
-) -> bool:
+def summarize_seed(data: pd.DataFrame, config: dict[str, Any], seed: int, fingerprint: str) -> bool:
     output_dir = resolve_path(config["output_dir"])
     outer_splits = config["cross_validation"]["outer_splits"]
     prediction_paths = [
-        output_dir
-        / "outer_predictions"
-        / f"seed_{seed}_outer_{fold_index:02d}.parquet"
+        output_dir / "outer_predictions" / f"seed_{seed}_outer_{fold_index:02d}.parquet"
         for fold_index in range(outer_splits)
     ]
     metric_paths = [
@@ -523,9 +505,7 @@ def summarize_ensemble_oof(
 
     for seed in seeds:
         paths = [
-            output_dir
-            / "outer_predictions"
-            / f"seed_{seed}_outer_{fold_index:02d}.parquet"
+            output_dir / "outer_predictions" / f"seed_{seed}_outer_{fold_index:02d}.parquet"
             for fold_index in range(outer_splits)
         ]
         metric_paths = [
@@ -538,28 +518,19 @@ def summarize_ensemble_oof(
         frame = pd.concat([pd.read_parquet(path) for path in paths], ignore_index=True)
         frame = frame.sort_values("row_id")
         if not np.array_equal(frame["row_id"].to_numpy(), np.arange(len(data))):
-            raise ValueError(
-                f"Seed {seed} outer predictions do not cover every row exactly once."
-            )
-        if not np.allclose(
-            frame["observed"], data[config["data"]["target_name"]]
-        ):
+            raise ValueError(f"Seed {seed} outer predictions do not cover every row exactly once.")
+        if not np.allclose(frame["observed"], data[config["data"]["target_name"]]):
             raise ValueError(f"Seed {seed} predictions do not align with prepared data.")
         seed_predictions.append(frame[prediction_columns(config)].to_numpy())
         for metric_path in metric_paths:
             with metric_path.open() as handle:
                 result = json.load(handle)
-            fold_rows.append(
-                {
-                    "seed": result["seed"],
-                    "outer_fold": result["outer_fold"],
-                    **{f"all_{key}": value for key, value in result["scores"]["all"].items()},
-                    **{
-                        f"deep_{key}": value
-                        for key, value in result["scores"].get("deep", {}).items()
-                    },
-                }
-            )
+            fold_rows.append({
+                "seed": result["seed"],
+                "outer_fold": result["outer_fold"],
+                **{f"all_{key}": value for key, value in result["scores"]["all"].items()},
+                **{f"deep_{key}": value for key, value in result["scores"].get("deep", {}).items()},
+            })
 
     ensemble_prediction = np.mean(np.asarray(seed_predictions), axis=0)
     ensemble_scores = score_subsets(data, ensemble_prediction, config)
@@ -636,18 +607,13 @@ def train_final_member(
     return model_path
 
 
-def assemble_ensemble(
-    config: dict[str, Any], seeds: Sequence[int], fingerprint: str
-) -> Path:
+def assemble_ensemble(config: dict[str, Any], seeds: Sequence[int], fingerprint: str) -> Path:
     output_dir = resolve_path(config["output_dir"])
-    model_paths = [
-        output_dir / "models" / f"quantile_seed_{seed}.joblib" for seed in seeds
-    ]
+    model_paths = [output_dir / "models" / f"quantile_seed_{seed}.joblib" for seed in seeds]
     missing = [path for path in model_paths if not path.exists()]
     if missing:
         raise FileNotFoundError(
-            "Cannot assemble ensemble; missing members: "
-            + ", ".join(str(path) for path in missing)
+            "Cannot assemble ensemble; missing members: " + ", ".join(str(path) for path in missing)
         )
     members = [ta.CatBoostResidualRegressor.load(path) for path in model_paths]
     ensemble = ta.QuantileRegressionEnsemble(
@@ -686,9 +652,7 @@ def selected_seeds(config: dict[str, Any], requested_seed: int | None) -> list[i
     return [requested_seed]
 
 
-def validate_splits(
-    data: pd.DataFrame, config: dict[str, Any], seeds: Sequence[int]
-) -> None:
+def validate_splits(data: pd.DataFrame, config: dict[str, Any], seeds: Sequence[int]) -> None:
     cv_config = config["cross_validation"]
     groups = data.index.get_level_values("expocode").to_numpy()
     for seed in seeds:
@@ -763,15 +727,11 @@ def main() -> None:
 
     if args.stage in ("evaluate", "all"):
         outer_splits = config["cross_validation"]["outer_splits"]
-        fold_indices = (
-            [args.outer_fold] if args.outer_fold is not None else range(outer_splits)
-        )
+        fold_indices = [args.outer_fold] if args.outer_fold is not None else range(outer_splits)
         for seed in seeds:
             for fold_index in fold_indices:
                 if not 0 <= fold_index < outer_splits:
-                    raise IndexError(
-                        f"Outer fold {fold_index} is outside [0, {outer_splits})."
-                    )
+                    raise IndexError(f"Outer fold {fold_index} is outside [0, {outer_splits}).")
                 run_outer_fold(
                     data,
                     config,
@@ -795,9 +755,7 @@ def main() -> None:
                 fingerprint,
             )
 
-    should_assemble = args.stage == "assemble" or (
-        args.stage == "all" and args.seed is None
-    )
+    should_assemble = args.stage == "assemble" or (args.stage == "all" and args.seed is None)
     if should_assemble:
         assemble_ensemble(config, all_seeds, fingerprint)
 
