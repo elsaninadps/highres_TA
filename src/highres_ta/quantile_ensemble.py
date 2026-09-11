@@ -4,6 +4,7 @@ import os
 from collections.abc import Sequence
 from typing import Literal
 
+import joblib
 import numpy as np
 from joblib import dump as joblib_dump
 from joblib import load as joblib_load
@@ -30,17 +31,30 @@ class QuantileRegressionEnsemble:
         self.aggregation = aggregation
         self._validate_members()
 
+    def optimise_cpus(self, max_cpus: int) -> None:
+        """
+        1. get the number of available CPUs
+        2. set number of cpus to min(max_cpus)
+        3. get the number of estimators
+        4. set the number of cpus for each estimator to max(1, floor(n_cpus / n_estimators))
+        """
+        n_cpus = min(os.cpu_count() or 1, max_cpus)
+        n_estimators = len(self.estimators)
+        self.cpus_per_estimator = max(1, n_cpus // n_estimators)
+        for estimator in self.estimators:
+            estimator.catboost_kwargs["thread_count"] = self.cpus_per_estimator
+
     def predict_members(self, X) -> np.ndarray:
         """Return predictions shaped (members, observations, quantiles)."""
-        predictions = np.asarray(
-            [estimator.predict_quantiles(X) for estimator in self.estimators],
-            dtype=float,
+        n_estimators = len(self.estimators)
+        outputs = joblib.Parallel(n_jobs=n_estimators)(
+            joblib.delayed(estimator.predict_quantiles)(X) for estimator in self.estimators
         )
+        predictions = np.asarray(outputs, dtype=np.float32)
         expected_shape = (len(self.estimators), len(X), len(self.quantiles))
         if predictions.shape != expected_shape:
             raise ValueError(
-                f"Expected member predictions with shape {expected_shape}, "
-                f"got {predictions.shape}."
+                f"Expected member predictions with shape {expected_shape}, got {predictions.shape}."
             )
         return predictions
 
