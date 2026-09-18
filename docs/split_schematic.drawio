@@ -1,0 +1,181 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="splits" id="splits">
+    <mxGraphModel dx="850" dy="640" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="640" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="How each ensemble member uses the train / validation / test split" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="0" y="24" width="850" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="data" value="Prepared observations, grouped by cruise (expocode)" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#F5F5F5;strokeColor=#999999;" vertex="1" parent="1">
+          <mxGeometry x="235" y="64" width="380" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="a_data" style="endArrow=classic;html=1;strokeColor=#666666;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="425" y="102" as="sourcePoint" />
+            <mxPoint x="425" y="128" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="caption" value="Split once into 7 stratified, cruise-grouped blocks &#8212; one fixed partition, reused by every member" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="91" y="128" width="668" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="h_test" value="block 0" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="163" y="156" width="86" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="h0" value="block 1" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="279" y="156" width="80" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="h1" value="block 2" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="359" y="156" width="80" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="h2" value="block 3" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="439" y="156" width="80" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="h3" value="block 4" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="519" y="156" width="80" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="h4" value="block 5" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="599" y="156" width="80" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="h5" value="block 6" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="679" y="156" width="80" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="test_block" value="test" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#F8CECC;strokeColor=#B85450;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="163" y="184" width="86" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="test_note" value="one block, held out once&#10;&#8212; the same rows&#10;for every member" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontColor=#B85450;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="139" y="358" width="134" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="s0" value="seed 0" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;align=right;" vertex="1" parent="1">
+          <mxGeometry x="91" y="184" width="60" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c0_0" value="valid" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;" vertex="1" parent="1">
+          <mxGeometry x="279" y="184" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c0_1" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="359" y="184" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c0_2" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="439" y="184" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c0_3" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="519" y="184" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c0_4" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="599" y="184" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c0_5" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="679" y="184" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="s1" value="seed 1" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;align=right;" vertex="1" parent="1">
+          <mxGeometry x="91" y="220" width="60" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c1_0" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="279" y="220" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c1_1" value="valid" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;" vertex="1" parent="1">
+          <mxGeometry x="359" y="220" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c1_2" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="439" y="220" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c1_3" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="519" y="220" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c1_4" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="599" y="220" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c1_5" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="679" y="220" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="s2" value="seed 2" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;align=right;" vertex="1" parent="1">
+          <mxGeometry x="91" y="256" width="60" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c2_0" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="279" y="256" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c2_1" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="359" y="256" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c2_2" value="valid" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;" vertex="1" parent="1">
+          <mxGeometry x="439" y="256" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c2_3" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="519" y="256" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c2_4" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="599" y="256" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c2_5" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="679" y="256" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="s39" value="seed 39" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;align=right;" vertex="1" parent="1">
+          <mxGeometry x="91" y="322" width="60" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c39_0" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="279" y="322" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c39_1" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="359" y="322" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c39_2" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="439" y="322" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c39_3" value="valid" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;" vertex="1" parent="1">
+          <mxGeometry x="519" y="322" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c39_4" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="599" y="322" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="c39_5" value="train" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+          <mxGeometry x="679" y="322" width="80" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="dots_label" value="&#8942;" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;align=right;" vertex="1" parent="1">
+          <mxGeometry x="91" y="292" width="60" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="dots_note" value="the validation block rotates through blocks 1&#8211;6" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontColor=#555555;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="279" y="292" width="480" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="footnote" value="A cruise is never split across blocks, so no cruise appears in two splits." style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="91" y="404" width="668" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="ch0" value="TRAIN &#8212; 5 blocks" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="35" y="446" width="240" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="a0" style="endArrow=classic;html=1;strokeColor=#666666;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="155" y="482" as="sourcePoint" />
+            <mxPoint x="155" y="504" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cb0" value="Inner 5-fold CV runs here only.&lt;br&gt;Optuna picks hyperparameters;&lt;br&gt;member then refits on all five." style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#FFFFFF;strokeColor=#CCCCCC;" vertex="1" parent="1">
+          <mxGeometry x="35" y="504" width="240" height="96" as="geometry" />
+        </mxCell>
+        <mxCell id="ch1" value="VALIDATION &#8212; 1 block" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#FFE6CC;strokeColor=#D79B00;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="305" y="446" width="240" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="a1" style="endArrow=classic;html=1;strokeColor=#666666;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="425" y="482" as="sourcePoint" />
+            <mxPoint x="425" y="504" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cb1" value="Untouched by tuning and fitting.&lt;br&gt;Used to calibrate the predicted&lt;br&gt;uncertainty intervals." style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#FFFFFF;strokeColor=#CCCCCC;" vertex="1" parent="1">
+          <mxGeometry x="305" y="504" width="240" height="96" as="geometry" />
+        </mxCell>
+        <mxCell id="ch2" value="TEST &#8212; block 0, shared" style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#F8CECC;strokeColor=#B85450;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="575" y="446" width="240" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="a2" style="endArrow=classic;html=1;strokeColor=#666666;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="695" y="482" as="sourcePoint" />
+            <mxPoint x="695" y="504" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cb2" value="No member ever trains on it.&lt;br&gt;Scores each member and the&lt;br&gt;ensemble mean over all members." style="rounded=0;whiteSpace=wrap;html=1;fontSize=11;fillColor=#FFFFFF;strokeColor=#CCCCCC;" vertex="1" parent="1">
+          <mxGeometry x="575" y="504" width="240" height="96" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
