@@ -1,20 +1,23 @@
-"""Tune, evaluate, and fit a seeded CatBoost quantile ensemble.
+"""Tune and fit a seeded CatBoost quantile ensemble on a single grouped split.
 
-The evaluation stage uses nested, expedition-grouped cross-validation. Every
-observation receives one genuinely outer-fold prediction per seed, allowing an
-out-of-fold estimate for both individual members and the aggregated ensemble.
-The training stage independently tunes and refits one full-data model per seed.
+The prepared data is partitioned once into ``n_parts`` stratified, cruise-grouped
+blocks using a fixed ``split_random_state``. Block 0 is the test set for every
+ensemble member and is never trained on, so the assembled ensemble keeps an
+honest held-out score. Each member reserves one of the remaining blocks for
+validation (rotating with the member seed) and trains on the other five.
+Hyperparameters are tuned by cross-validation *inside* the training blocks only,
+which leaves the validation block untouched for uncertainty calibration.
 
 Examples
 --------
-Smoke-test one outer fold::
+Smoke-test one member::
 
-    uv run python scripts/train_quantile_ensemble.py --stage evaluate --seed 43 \
-        --outer-fold 0 --n-trials 2 --optuna-jobs 1
+    uv run python scripts/train_quantile_ensemble.py --stage train --seed 0 \
+        --n-trials 2 --optuna-jobs 1
 
-Run or resume one complete member::
+Check the split without training anything::
 
-    uv run python scripts/train_quantile_ensemble.py --stage all --seed 43
+    uv run python scripts/train_quantile_ensemble.py --dry-run
 
 Run or resume every member and assemble the ensemble::
 
@@ -23,18 +26,20 @@ Run or resume every member and assemble the ensemble::
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import json
 import sys
 from collections.abc import Sequence
+from enum import Enum
+from itertools import combinations
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import dotenv
 import numpy as np
 import optuna
 import pandas as pd
+import typer
 import yaml
 from loguru import logger
 
@@ -42,49 +47,14 @@ import highres_ta as ta
 
 ROOT = Path(dotenv.find_dotenv("pyproject.toml")).parent
 DEFAULT_CONFIG = ROOT / "scripts" / "quantile_ensemble_config.yaml"
+SPLIT_NAMES = ("train", "validation", "test")
+app = typer.Typer()
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument(
-        "--stage",
-        choices=("evaluate", "train", "assemble", "all"),
-        default="all",
-        help="Pipeline stage to run. Existing Optuna studies are resumed.",
-    )
-    parser.add_argument("--seed", type=int, help="Run only this configured member seed.")
-    parser.add_argument(
-        "--outer-fold",
-        type=int,
-        help="Evaluate only this zero-based outer fold (requires --seed).",
-    )
-    parser.add_argument(
-        "--n-trials",
-        type=int,
-        help="Override the target number of completed trials per study.",
-    )
-    parser.add_argument(
-        "--optuna-jobs",
-        type=int,
-        help="Override the number of concurrent Optuna trials.",
-    )
-    parser.add_argument(
-        "--maximum-iterations",
-        type=int,
-        help="Override CatBoost's maximum iterations (useful for smoke tests).",
-    )
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        help="Override the artifact directory.",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Load data and validate all requested grouped folds without training.",
-    )
-    return parser.parse_args()
+class Stage(str, Enum):
+    TRAIN = "train"
+    ASSEMBLE = "assemble"
+    ALL = "all"
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -172,8 +142,7 @@ def suggest_parameters(trial: optuna.Trial) -> dict[str, Any]:
         "learning_rate": trial.suggest_float("learning_rate", 0.01, 1.0, log=True),
         "l2_leaf_reg": trial.suggest_float("l2_leaf_reg", 1.0, 100.0, log=True),
         "min_data_in_leaf": trial.suggest_int("min_data_in_leaf", 1, 100),
-        "depth": trial.suggest_int("depth", 4, 12),
-        "rsm": trial.suggest_float("rsm", 0.1, 1.0),
+        "depth": trial.suggest_int("depth", 4, 8),
         "random_strength": trial.suggest_float("random_strength", 1.0, 10.0),
     }
 
@@ -262,7 +231,7 @@ def optimize(
     storage_path.parent.mkdir(parents=True, exist_ok=True)
     study = optuna.create_study(
         direction="minimize",
-        sampler=optuna.samplers.TPESampler(seed=seed),
+        sampler=optuna.samplers.TPESampler(seed=seed, n_startup_trials=20),
         storage=f"sqlite:///{storage_path}",
         study_name=study_name,
         load_if_exists=True,
@@ -352,6 +321,10 @@ def prediction_frame(
     return frame
 
 
+def prediction_columns(config: dict[str, Any]) -> list[str]:
+    return [f"q_{alpha:g}" for alpha in quantiles(config)]
+
+
 def json_default(value):
     if isinstance(value, (np.integer, np.floating)):
         return value.item()
@@ -371,190 +344,65 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     temporary_path.replace(path)
 
 
-def run_outer_fold(
-    data: pd.DataFrame,
-    config: dict[str, Any],
-    seed: int,
-    outer_fold_index: int,
-    target_trials: int,
-    optuna_jobs: int,
-    fingerprint: str,
-) -> None:
-    output_dir = resolve_path(config["output_dir"])
+def member_split(data: pd.DataFrame, config: dict[str, Any], seed: int) -> dict[str, np.ndarray]:
+    """Return this member's train/validation/test positional indices.
+
+    Block 0 of the shared partition always tests, so no member ever trains on it.
+    """
     cv_config = config["cross_validation"]
-    outer_folds = ta.make_train_test_folds(
-        data,
-        n_splits=cv_config["outer_splits"],
-        shuffle=True,
-        random_state=seed,
-    )
-    outer_train_index, outer_test_index = outer_folds[outer_fold_index]
-    outer_train = data.iloc[outer_train_index]
-    outer_test = data.iloc[outer_test_index]
-    inner_folds = ta.make_train_test_folds(
-        outer_train,
-        n_splits=cv_config["inner_splits"],
-        shuffle=True,
-        random_state=seed,
-    )
-
-    stem = f"seed_{seed}_outer_{outer_fold_index:02d}"
-    study = optimize(
-        outer_train,
-        inner_folds,
-        config,
-        seed,
-        output_dir / "studies" / f"{stem}.sqlite3",
-        f"catboost_quantile_{stem}",
-        target_trials,
-        optuna_jobs,
-    )
-    model = make_model(
-        config,
-        seed,
-        selected_params(study, config, seed, final_fit=True),
-    )
-    feature_names = config["data"]["feature_names"]
-    target_name = config["data"]["target_name"]
-    model.fit(outer_train[feature_names], outer_train[target_name])
-    prediction = model.predict_quantiles(outer_test[feature_names])
-    scores = score_subsets(outer_test, prediction, config)
-
-    prediction_path = output_dir / "outer_predictions" / f"{stem}.parquet"
-    prediction_path.parent.mkdir(parents=True, exist_ok=True)
-    prediction_frame(outer_test, outer_test_index, prediction, config).to_parquet(
-        prediction_path, index=False
-    )
-    write_json(
-        output_dir / "outer_metrics" / f"{stem}.json",
-        {
-            "seed": seed,
-            "outer_fold": outer_fold_index,
-            "data_fingerprint": fingerprint,
-            "train_observations": len(outer_train),
-            "test_observations": len(outer_test),
-            "train_cruises": outer_train.index.get_level_values("expocode").nunique(),
-            "test_cruises": outer_test.index.get_level_values("expocode").nunique(),
-            "best_trial": study.best_trial.number,
-            "best_inner_cv_loss": study.best_value,
-            "best_params": study.best_trial.params,
-            "refit_iterations": study.best_trial.user_attrs["refit_iterations"],
-            "scores": scores,
-        },
-    )
-    logger.success("Completed seed {} outer fold {}", seed, outer_fold_index)
-
-
-def prediction_columns(config: dict[str, Any]) -> list[str]:
-    return [f"q_{alpha:g}" for alpha in quantiles(config)]
-
-
-def summarize_seed(data: pd.DataFrame, config: dict[str, Any], seed: int, fingerprint: str) -> bool:
-    output_dir = resolve_path(config["output_dir"])
-    outer_splits = config["cross_validation"]["outer_splits"]
-    prediction_paths = [
-        output_dir / "outer_predictions" / f"seed_{seed}_outer_{fold_index:02d}.parquet"
-        for fold_index in range(outer_splits)
+    n_parts = int(cv_config["n_parts"])
+    if n_parts < 3:
+        raise ValueError("cross_validation.n_parts must be at least 3.")
+    blocks = [
+        test_index
+        for _, test_index in ta.make_train_test_folds(
+            data,
+            n_splits=n_parts,
+            shuffle=True,
+            random_state=int(cv_config["split_random_state"]),
+        )
     ]
-    metric_paths = [
-        output_dir / "outer_metrics" / f"seed_{seed}_outer_{fold_index:02d}.json"
-        for fold_index in range(outer_splits)
-    ]
-    if not all(path.exists() for path in prediction_paths + metric_paths):
-        logger.info("Seed {} is not yet complete; skipping its summary", seed)
-        return False
-
-    predictions = pd.concat(
-        [pd.read_parquet(path) for path in prediction_paths], ignore_index=True
-    ).sort_values("row_id")
-    expected_rows = np.arange(len(data))
-    if not np.array_equal(predictions["row_id"].to_numpy(), expected_rows):
-        raise ValueError(f"Seed {seed} outer predictions do not cover every row exactly once.")
-    if not np.allclose(predictions["observed"], data[config["data"]["target_name"]]):
-        raise ValueError(f"Seed {seed} predictions do not align with the prepared data.")
-
-    pooled_prediction = predictions[prediction_columns(config)].to_numpy()
-    pooled_scores = score_subsets(data, pooled_prediction, config)
-    fold_metrics = []
-    for path in metric_paths:
-        with path.open() as handle:
-            fold_metrics.append(json.load(handle))
-    write_json(
-        output_dir / "summaries" / f"nested_cv_seed_{seed}.json",
-        {
-            "seed": seed,
-            "data_fingerprint": fingerprint,
-            "pooled_scores": pooled_scores,
-            "fold_scores": [result["scores"] for result in fold_metrics],
-        },
+    validation_block = 1 + seed % (n_parts - 1)
+    train_index = np.concatenate(
+        [block for index, block in enumerate(blocks) if index not in (0, validation_block)]
     )
-    logger.success("Wrote pooled nested-CV summary for seed {}", seed)
-    return True
+    return {
+        "train": np.sort(train_index),
+        "validation": np.sort(blocks[validation_block]),
+        "test": np.sort(blocks[0]),
+    }
 
 
-def summarize_ensemble_oof(
-    data: pd.DataFrame,
-    config: dict[str, Any],
-    seeds: Sequence[int],
-    fingerprint: str,
-) -> bool:
-    output_dir = resolve_path(config["output_dir"])
-    outer_splits = config["cross_validation"]["outer_splits"]
-    seed_predictions = []
-    fold_rows = []
-
-    for seed in seeds:
-        paths = [
-            output_dir / "outer_predictions" / f"seed_{seed}_outer_{fold_index:02d}.parquet"
-            for fold_index in range(outer_splits)
-        ]
-        metric_paths = [
-            output_dir / "outer_metrics" / f"seed_{seed}_outer_{fold_index:02d}.json"
-            for fold_index in range(outer_splits)
-        ]
-        if not all(path.exists() for path in paths + metric_paths):
-            logger.info("Nested CV is incomplete; skipping the ensemble OOF summary")
-            return False
-        frame = pd.concat([pd.read_parquet(path) for path in paths], ignore_index=True)
-        frame = frame.sort_values("row_id")
-        if not np.array_equal(frame["row_id"].to_numpy(), np.arange(len(data))):
-            raise ValueError(f"Seed {seed} outer predictions do not cover every row exactly once.")
-        if not np.allclose(frame["observed"], data[config["data"]["target_name"]]):
-            raise ValueError(f"Seed {seed} predictions do not align with prepared data.")
-        seed_predictions.append(frame[prediction_columns(config)].to_numpy())
-        for metric_path in metric_paths:
-            with metric_path.open() as handle:
-                result = json.load(handle)
-            fold_rows.append({
-                "seed": result["seed"],
-                "outer_fold": result["outer_fold"],
-                **{f"all_{key}": value for key, value in result["scores"]["all"].items()},
-                **{f"deep_{key}": value for key, value in result["scores"].get("deep", {}).items()},
-            })
-
-    ensemble_prediction = np.mean(np.asarray(seed_predictions), axis=0)
-    ensemble_scores = score_subsets(data, ensemble_prediction, config)
-    frame = prediction_frame(data, np.arange(len(data)), ensemble_prediction, config)
-    oof_path = output_dir / "summaries" / "ensemble_oof_predictions.parquet"
-    oof_path.parent.mkdir(parents=True, exist_ok=True)
-    frame.to_parquet(oof_path, index=False)
-    pd.DataFrame(fold_rows).to_csv(
-        output_dir / "summaries" / "nested_cv_fold_metrics.csv", index=False
+def validate_split(data: pd.DataFrame, split: dict[str, np.ndarray], seed: int) -> None:
+    covered = np.concatenate([split[name] for name in SPLIT_NAMES])
+    if len(covered) != len(data) or len(np.unique(covered)) != len(data):
+        raise ValueError(f"Seed {seed} split does not cover every row exactly once.")
+    groups = data.index.get_level_values("expocode").to_numpy()
+    for left, right in combinations(SPLIT_NAMES, 2):
+        overlap = set(groups[split[left]]).intersection(groups[split[right]])
+        if overlap:
+            raise ValueError(f"Seed {seed} leaks cruises between {left} and {right}: {overlap}")
+    logger.info(
+        "Seed {} split: {:,} train / {:,} validation / {:,} test observations",
+        seed,
+        len(split["train"]),
+        len(split["validation"]),
+        len(split["test"]),
     )
-    write_json(
-        output_dir / "summaries" / "ensemble_oof_metrics.json",
-        {
-            "seeds": list(seeds),
-            "data_fingerprint": fingerprint,
-            "aggregation": "mean",
-            "scores": ensemble_scores,
-        },
-    )
-    logger.success("Wrote leakage-free ensemble out-of-fold metrics")
-    return True
 
 
-def train_final_member(
+def write_split(output_dir: Path, data: pd.DataFrame, split: dict[str, np.ndarray], seed: int):
+    frame = pd.DataFrame({
+        "row_id": np.concatenate([split[name] for name in SPLIT_NAMES]),
+        "split": np.repeat(SPLIT_NAMES, [len(split[name]) for name in SPLIT_NAMES]),
+    }).sort_values("row_id", ignore_index=True)
+    frame["expocode"] = data.index.get_level_values("expocode").to_numpy()[frame["row_id"]]
+    path = output_dir / "splits" / f"seed_{seed}.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_parquet(path, index=False)
+
+
+def train_member(
     data: pd.DataFrame,
     config: dict[str, Any],
     seed: int,
@@ -563,48 +411,102 @@ def train_final_member(
     fingerprint: str,
 ) -> Path:
     output_dir = resolve_path(config["output_dir"])
-    cv_config = config["cross_validation"]
-    folds = ta.make_train_test_folds(
-        data,
-        n_splits=cv_config["final_tuning_splits"],
+    feature_names = config["data"]["feature_names"]
+    target_name = config["data"]["target_name"]
+
+    split = member_split(data, config, seed)
+    validate_split(data, split, seed)
+    write_split(output_dir, data, split, seed)
+    train = data.iloc[split["train"]]
+
+    inner_folds = ta.make_train_test_folds(
+        train,
+        n_splits=config["cross_validation"]["inner_splits"],
         shuffle=True,
         random_state=seed,
     )
     study = optimize(
-        data,
-        folds,
+        train,
+        inner_folds,
         config,
         seed,
-        output_dir / "studies" / f"seed_{seed}_final.sqlite3",
-        f"catboost_quantile_seed_{seed}_final",
+        output_dir / "studies" / f"seed_{seed}.sqlite3",
+        f"catboost_quantile_seed_{seed}",
         target_trials,
         optuna_jobs,
     )
-    params = selected_params(study, config, seed, final_fit=True)
-    model = make_model(config, seed, params)
-    feature_names = config["data"]["feature_names"]
-    target_name = config["data"]["target_name"]
-    model.fit(data[feature_names], data[target_name])
+    model = make_model(config, seed, selected_params(study, config, seed, final_fit=True))
+    model.fit(train[feature_names], train[target_name])
+
+    scores = {}
+    for name in ("validation", "test"):
+        subset = data.iloc[split[name]]
+        prediction = model.predict_quantiles(subset[feature_names])
+        scores[name] = score_subsets(subset, prediction, config)
+        path = output_dir / "predictions" / f"seed_{seed}_{name}.parquet"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        prediction_frame(subset, split[name], prediction, config).to_parquet(path, index=False)
+
     model.training_metadata_ = {
         "seed": seed,
         "data_fingerprint": fingerprint,
-        "observation_count": len(data),
-        "cruise_count": data.index.get_level_values("expocode").nunique(),
+        "observation_counts": {name: len(split[name]) for name in SPLIT_NAMES},
+        "cruise_counts": {
+            name: len(set(data.index.get_level_values("expocode").to_numpy()[split[name]]))
+            for name in SPLIT_NAMES
+        },
         "best_trial": study.best_trial.number,
-        "best_cv_loss": study.best_value,
+        "best_inner_cv_loss": study.best_value,
         "best_params": study.best_trial.params,
         "refit_iterations": study.best_trial.user_attrs["refit_iterations"],
+        "scores": scores,
     }
 
     model_path = output_dir / "models" / f"quantile_seed_{seed}.joblib"
     model_path.parent.mkdir(parents=True, exist_ok=True)
     model.save(model_path)
-    write_json(
-        output_dir / "models" / f"quantile_seed_{seed}.json",
-        model.training_metadata_,
-    )
-    logger.success("Saved final member for seed {} to {}", seed, model_path)
+    write_json(output_dir / "models" / f"quantile_seed_{seed}.json", model.training_metadata_)
+    logger.success("Saved member for seed {} to {}", seed, model_path)
     return model_path
+
+
+def summarize_ensemble_test(
+    data: pd.DataFrame,
+    config: dict[str, Any],
+    seeds: Sequence[int],
+    fingerprint: str,
+) -> None:
+    output_dir = resolve_path(config["output_dir"])
+    paths = [output_dir / "predictions" / f"seed_{seed}_test.parquet" for seed in seeds]
+    missing = [path for path in paths if not path.exists()]
+    if missing:
+        raise FileNotFoundError(
+            "Cannot summarize the held-out test set; missing member predictions: "
+            + ", ".join(str(path) for path in missing)
+        )
+
+    frames = [pd.read_parquet(path).sort_values("row_id", ignore_index=True) for path in paths]
+    row_ids = frames[0]["row_id"].to_numpy()
+    if any(not np.array_equal(frame["row_id"].to_numpy(), row_ids) for frame in frames):
+        raise ValueError("Ensemble members were evaluated on different test rows.")
+
+    columns = prediction_columns(config)
+    prediction = np.mean([frame[columns].to_numpy() for frame in frames], axis=0)
+    test = data.iloc[row_ids]
+    prediction_frame(test, row_ids, prediction, config).to_parquet(
+        output_dir / "predictions" / "ensemble_test.parquet", index=False
+    )
+    write_json(
+        output_dir / "ensemble_test_metrics.json",
+        {
+            "seeds": list(seeds),
+            "data_fingerprint": fingerprint,
+            "aggregation": "mean",
+            "test_observations": len(row_ids),
+            "scores": score_subsets(test, prediction, config),
+        },
+    )
+    logger.success("Wrote held-out ensemble test metrics over {} members", len(seeds))
 
 
 def assemble_ensemble(config: dict[str, Any], seeds: Sequence[int], fingerprint: str) -> Path:
@@ -637,14 +539,13 @@ def assemble_ensemble(config: dict[str, Any], seeds: Sequence[int], fingerprint:
             "ensemble": ensemble_path.name,
         },
     )
-    logger.success("Saved seven-member ensemble to {}", ensemble_path)
+    n_members = len(seeds)
+    logger.success("Saved {}-member ensemble to {}", n_members, ensemble_path)
     return ensemble_path
 
 
 def selected_seeds(config: dict[str, Any], requested_seed: int | None) -> list[int]:
     configured = [int(seed) for seed in config["seeds"]]
-    if len(configured) != 7 or len(set(configured)) != 7:
-        raise ValueError("Configuration must contain exactly seven unique seeds.")
     if requested_seed is None:
         return configured
     if requested_seed not in configured:
@@ -652,113 +553,91 @@ def selected_seeds(config: dict[str, Any], requested_seed: int | None) -> list[i
     return [requested_seed]
 
 
-def validate_splits(data: pd.DataFrame, config: dict[str, Any], seeds: Sequence[int]) -> None:
-    cv_config = config["cross_validation"]
-    groups = data.index.get_level_values("expocode").to_numpy()
-    for seed in seeds:
-        outer_folds = ta.make_train_test_folds(
-            data,
-            n_splits=cv_config["outer_splits"],
-            shuffle=True,
-            random_state=seed,
-        )
-        covered = np.zeros(len(data), dtype=int)
-        for outer_fold_index, (train_index, test_index) in enumerate(outer_folds):
-            covered[test_index] += 1
-            overlap = set(groups[train_index]).intersection(groups[test_index])
-            if overlap:
-                raise ValueError(
-                    f"Seed {seed}, outer fold {outer_fold_index} leaks cruises: {overlap}"
-                )
-            inner_folds = ta.make_train_test_folds(
-                data.iloc[train_index],
-                n_splits=cv_config["inner_splits"],
-                shuffle=True,
-                random_state=seed,
-            )
-            inner_groups = groups[train_index]
-            for inner_train, inner_validation in inner_folds:
-                inner_overlap = set(inner_groups[inner_train]).intersection(
-                    inner_groups[inner_validation]
-                )
-                if inner_overlap:
-                    raise ValueError(
-                        f"Seed {seed}, outer fold {outer_fold_index} leaks inner cruises."
-                    )
-        if not np.all(covered == 1):
-            raise ValueError(f"Seed {seed} outer folds do not test each row exactly once.")
-        logger.info(
-            "Validated seed {}: {} outer folds, each with {} inner folds",
-            seed,
-            len(outer_folds),
-            cv_config["inner_splits"],
-        )
-
-
-def main() -> None:
-    args = parse_args()
-    if args.outer_fold is not None and args.seed is None:
-        raise ValueError("--outer-fold requires --seed.")
+@app.command(help=__doc__)
+def main(
+    config_path: Annotated[
+        Path,
+        typer.Option(
+            "--config",
+            help="Path to the ensemble configuration file.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = DEFAULT_CONFIG,
+    stage: Annotated[
+        Stage,
+        typer.Option(help="Pipeline stage to run. Existing Optuna studies are resumed."),
+    ] = Stage.ALL,
+    seed: Annotated[
+        int | None,
+        typer.Option(help="Run only this configured member seed."),
+    ] = None,
+    n_trials: Annotated[
+        int | None,
+        typer.Option(help="Override the target number of completed trials per study."),
+    ] = None,
+    optuna_jobs: Annotated[
+        int | None,
+        typer.Option(help="Override the number of concurrent Optuna trials."),
+    ] = None,
+    maximum_iterations: Annotated[
+        int | None,
+        typer.Option(help="Override CatBoost's maximum iterations (useful for smoke tests)."),
+    ] = None,
+    output_dir: Annotated[
+        Path | None,
+        typer.Option(help="Override the artifact directory."),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(help="Load data and validate the requested splits without training."),
+    ] = False,
+) -> None:
     logger.remove()
     logger.add(sys.stderr, level="INFO")
 
-    config = load_config(args.config)
-    if args.maximum_iterations is not None:
-        config["model"]["maximum_iterations"] = args.maximum_iterations
-    if args.output_dir is not None:
-        config["output_dir"] = str(args.output_dir)
-    seeds = selected_seeds(config, args.seed)
+    config = load_config(config_path)
+    if maximum_iterations is not None:
+        config["model"]["maximum_iterations"] = maximum_iterations
+    if output_dir is not None:
+        config["output_dir"] = str(output_dir)
+    seeds = selected_seeds(config, seed)
     all_seeds = selected_seeds(config, None)
-    target_trials = args.n_trials or int(config["optimization"]["n_trials"])
-    optuna_jobs = args.optuna_jobs or int(config["optimization"]["n_jobs"])
+    target_trials = n_trials or int(config["optimization"]["n_trials"])
+    resolved_optuna_jobs = optuna_jobs or int(config["optimization"]["n_jobs"])
     if target_trials < 1:
         raise ValueError("The target number of completed trials must be positive.")
-    if optuna_jobs == 0:
+    if resolved_optuna_jobs == 0:
         raise ValueError("Optuna jobs must be nonzero.")
     if config["model"]["maximum_iterations"] < 1:
         raise ValueError("CatBoost maximum iterations must be positive.")
     data = prepare_data(config)
     fingerprint = data_fingerprint(data)
     logger.info("Data fingerprint: {}", fingerprint)
-    if args.dry_run:
-        validate_splits(data, config, seeds)
+    if dry_run:
+        for member_seed in seeds:
+            validate_split(data, member_split(data, config, member_seed), member_seed)
         logger.success("Dry run completed; no studies or models were written")
         return
 
-    if args.stage in ("evaluate", "all"):
-        outer_splits = config["cross_validation"]["outer_splits"]
-        fold_indices = [args.outer_fold] if args.outer_fold is not None else range(outer_splits)
-        for seed in seeds:
-            for fold_index in fold_indices:
-                if not 0 <= fold_index < outer_splits:
-                    raise IndexError(f"Outer fold {fold_index} is outside [0, {outer_splits}).")
-                run_outer_fold(
-                    data,
-                    config,
-                    seed,
-                    fold_index,
-                    target_trials,
-                    optuna_jobs,
-                    fingerprint,
-                )
-            summarize_seed(data, config, seed, fingerprint)
-        summarize_ensemble_oof(data, config, all_seeds, fingerprint)
-
-    if args.stage in ("train", "all"):
-        for seed in seeds:
-            train_final_member(
+    if stage in (Stage.TRAIN, Stage.ALL):
+        for member_seed in seeds:
+            train_member(
                 data,
                 config,
-                seed,
+                member_seed,
                 target_trials,
-                optuna_jobs,
+                resolved_optuna_jobs,
                 fingerprint,
             )
 
-    should_assemble = args.stage == "assemble" or (args.stage == "all" and args.seed is None)
+    should_assemble = stage is Stage.ASSEMBLE or (stage is Stage.ALL and seed is None)
     if should_assemble:
+        summarize_ensemble_test(data, config, all_seeds, fingerprint)
         assemble_ensemble(config, all_seeds, fingerprint)
 
 
 if __name__ == "__main__":
-    main()
+    app()
