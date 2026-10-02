@@ -79,10 +79,22 @@ def predict_map_for_date(model, features: xr.Dataset, date: str) -> xr.Dataset:
         columns=model.quantiles,
     )
 
-    yhat_q70_df = pd.DataFrame(
+    yhat_std_df = pd.DataFrame(
         np.std(yhat, axis=0),
         index=features_df.index,
         columns=model.quantiles,
+    )
+
+    yhat_mad_df = pd.DataFrame(
+        np.median(np.abs(yhat - np.median(yhat, axis=0)), axis=0),
+        index=features_df.index,
+        columns=model.quantiles,
+    )
+
+    yhat_quantile_diffs = pd.DataFrame(
+        np.median(np.diff(yhat[:, :, [0, -1]], axis=2), axis=0),
+        index=features_df.index,
+        columns=[f"quantile_diff_{model.quantiles[0]}_{model.quantiles[-1]}"],
     )
 
     yhat_avg_da = (
@@ -92,13 +104,27 @@ def predict_map_for_date(model, features: xr.Dataset, date: str) -> xr.Dataset:
         .transpose("time", "dayofyear", "quantile", "lat", "lon")
     )
 
-    yhat_q70_da = (
-        yhat_q70_df
+    yhat_std_da = (
+        yhat_std_df
         .to_xarray()
-        .to_array(dim="quantile", name="talk_pred_q70")
+        .to_array(dim="quantile", name="talk_pred_std")
         .transpose("time", "dayofyear", "quantile", "lat", "lon")
     )
 
-    yhat_ds = xr.merge([yhat_avg_da, yhat_q70_da])
+    yhat_mad_da = (
+        yhat_mad_df
+        .to_xarray()
+        .to_array(dim="quantile", name="talk_pred_mad")
+        .transpose("time", "dayofyear", "quantile", "lat", "lon")
+    )
+
+    yhat_quantile_diffs_da = (
+        yhat_quantile_diffs
+        .to_xarray()
+        .to_array(dim="quantile_diff", name="talk_pred_quantile_diff")
+        .transpose("time", "dayofyear", "quantile_diff", "lat", "lon")
+    )
+
+    yhat_ds = xr.merge([yhat_avg_da, yhat_std_da, yhat_mad_da, yhat_quantile_diffs_da])
 
     return yhat_ds
