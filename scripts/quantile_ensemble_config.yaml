@@ -1,6 +1,4 @@
-# Each seed selects a member's validation block and drives its Optuna sampler and CatBoost.
-seeds: [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39 ]
-output_dir: models/quantile_ensemble
+output_dir: models/quantile_ensemble_split_hpo
 
 data:
   parquet_glob: data/training/*.pq
@@ -39,13 +37,13 @@ model:
   final_thread_count: -1
 
 cross_validation:
-  # One shared partition: block 0 always tests, one block validates, the rest train.
+  # One shared partition: block 0 always tests. Split k = 1..n_parts-1 validates on
+  # block k and trains on the remaining n_parts-2 blocks. Hyperparameters are tuned by
+  # leave-one-block-out CV over those training blocks, fixed for every replicate of a split.
   # split_random_state is independent of the member seeds so every member shares
   # the same held-out test block.
   n_parts: 7
   split_random_state: 42
-  # Inner folds run inside the training blocks only and alone select hyperparameters.
-  inner_splits: 5
 
 optimization:
   n_trials: 100
@@ -58,3 +56,5 @@ evaluation:
 
 ensemble:
   aggregation: mean
+  # HPO replicates r = 0..n-1 per split: independent Optuna studies (seed = 100 * split + r).
+  n_hpo_replicates: 7

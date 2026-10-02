@@ -7,7 +7,7 @@ from .inference import (
     predict_map_for_date,
     select_inference_date,
 )
-from .quantile_ensemble import QuantileRegressionEnsemble
+from .quantile_ensemble import QuantileRegressionEnsemble, decompose_variance
 from .quantiles import (
     pinball_loss_by_quantile,
     quantile_calibration,
@@ -25,6 +25,7 @@ __all__ = [
     "add_cyclical_dayofyear",
     "add_spherical_coords",
     "add_talk_adjustment",
+    "decompose_variance",
     "drop_bad_quality_talk",
     "drop_extreme_salinities",
     "load_data",

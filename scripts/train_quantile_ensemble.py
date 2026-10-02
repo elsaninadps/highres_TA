@@ -1,21 +1,26 @@
-"""Tune and fit a seeded CatBoost quantile ensemble on a single grouped split.
+"""Tune and fit a quantile ensemble over data splits and HPO replicates.
 
 The prepared data is partitioned once into ``n_parts`` stratified, cruise-grouped
 blocks using a fixed ``split_random_state``. Block 0 is the test set for every
 ensemble member and is never trained on, so the assembled ensemble keeps an
-honest held-out score. Each member reserves one of the remaining blocks for
-validation (rotating with the member seed) and trains on the other five.
-Hyperparameters are tuned by cross-validation *inside* the training blocks only,
-which leaves the validation block untouched for uncertainty calibration.
+honest held-out score.
+
+The ensemble is a nested two-factor design. Split ``k`` (1..n_parts-1) reserves
+block ``k`` for validation and trains on the remaining blocks. Within each split,
+``n_hpo_replicates`` independent Optuna studies each tune and fit one member
+(seed ``100 * k + r``). Hyperparameters are tuned by leave-one-block-out
+cross-validation inside the training blocks only, with folds fixed per split, so
+replicates differ only through the optimisation path and model randomness. The
+test-set variance decomposes into a data-split term and an HPO term.
 
 Examples
 --------
 Smoke-test one member::
 
-    uv run python scripts/train_quantile_ensemble.py --stage train --seed 0 \
-        --n-trials 2 --optuna-jobs 1
+    uv run python scripts/train_quantile_ensemble.py --stage train --split 1 \
+        --hpo-replicate 0 --n-trials 2 --optuna-jobs 1
 
-Check the split without training anything::
+Check the splits without training anything::
 
     uv run python scripts/train_quantile_ensemble.py --dry-run
 
@@ -24,12 +29,11 @@ Run or resume every member and assemble the ensemble::
     uv run python scripts/train_quantile_ensemble.py --stage all
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 import sys
 from collections.abc import Sequence
+from dataclasses import dataclass
 from enum import Enum
 from itertools import combinations
 from pathlib import Path
@@ -49,6 +53,20 @@ ROOT = Path(dotenv.find_dotenv("pyproject.toml")).parent
 DEFAULT_CONFIG = ROOT / "scripts" / "quantile_ensemble_config.yaml"
 SPLIT_NAMES = ("train", "validation", "test")
 app = typer.Typer()
+
+
+@dataclass(frozen=True)
+class Member:
+    split: int
+    replicate: int
+
+    @property
+    def seed(self) -> int:
+        return 100 * self.split + self.replicate
+
+    @property
+    def name(self) -> str:
+        return f"split_{self.split}_hpo_{self.replicate}"
 
 
 class Stage(str, Enum):
@@ -222,7 +240,7 @@ def optimize(
     data: pd.DataFrame,
     folds: Sequence[tuple[np.ndarray, np.ndarray]],
     config: dict[str, Any],
-    seed: int,
+    member: Member,
     storage_path: Path,
     study_name: str,
     target_completed_trials: int,
@@ -231,7 +249,7 @@ def optimize(
     storage_path.parent.mkdir(parents=True, exist_ok=True)
     study = optuna.create_study(
         direction="minimize",
-        sampler=optuna.samplers.TPESampler(seed=seed, n_startup_trials=20),
+        sampler=optuna.samplers.TPESampler(seed=member.seed, n_startup_trials=20),
         storage=f"sqlite:///{storage_path}",
         study_name=study_name,
         load_if_exists=True,
@@ -246,7 +264,9 @@ def optimize(
         "features": config["data"]["feature_names"],
         "target": config["data"]["target_name"],
         "model": config["model"],
-        "seed": seed,
+        "split": member.split,
+        "replicate": member.replicate,
+        "seed": member.seed,
     }
     signature = hashlib.sha256(json.dumps(signature_payload, sort_keys=True).encode()).hexdigest()
     existing_signature = study.user_attrs.get("study_signature")
@@ -268,7 +288,7 @@ def optimize(
     )
     if remaining:
         study.optimize(
-            objective_factory(data, folds, config, seed),
+            objective_factory(data, folds, config, member.seed),
             n_trials=remaining,
             n_jobs=optuna_jobs,
             show_progress_bar=optuna_jobs == 1,
@@ -344,16 +364,30 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     temporary_path.replace(path)
 
 
-def member_split(data: pd.DataFrame, config: dict[str, Any], seed: int) -> dict[str, np.ndarray]:
-    """Return this member's train/validation/test positional indices.
+def members(
+    config: dict[str, Any], split: int | None = None, replicate: int | None = None
+) -> list[Member]:
+    n_splits = int(config["cross_validation"]["n_parts"]) - 1
+    n_replicates = int(config["ensemble"]["n_hpo_replicates"])
+    if split is not None and not 1 <= split <= n_splits:
+        raise ValueError(f"Split {split} is outside 1..{n_splits}.")
+    if replicate is not None and not 0 <= replicate < n_replicates:
+        raise ValueError(f"HPO replicate {replicate} is outside 0..{n_replicates - 1}.")
+    return [
+        Member(k, r)
+        for k in range(1, n_splits + 1)
+        for r in range(n_replicates)
+        if split in (None, k) and replicate in (None, r)
+    ]
 
-    Block 0 of the shared partition always tests, so no member ever trains on it.
-    """
+
+def outer_blocks(data: pd.DataFrame, config: dict[str, Any]) -> list[np.ndarray]:
+    """Return the shared partition. Block 0 always tests, so no member trains on it."""
     cv_config = config["cross_validation"]
     n_parts = int(cv_config["n_parts"])
     if n_parts < 3:
         raise ValueError("cross_validation.n_parts must be at least 3.")
-    blocks = [
+    return [
         test_index
         for _, test_index in ta.make_train_test_folds(
             data,
@@ -362,50 +396,68 @@ def member_split(data: pd.DataFrame, config: dict[str, Any], seed: int) -> dict[
             random_state=int(cv_config["split_random_state"]),
         )
     ]
-    validation_block = 1 + seed % (n_parts - 1)
-    train_index = np.concatenate(
-        [block for index, block in enumerate(blocks) if index not in (0, validation_block)]
-    )
+
+
+def split_indices(blocks: Sequence[np.ndarray], split: int) -> dict[str, Any]:
+    """Return train/validation/test positional indices when block ``split`` validates."""
+    if not 1 <= split < len(blocks):
+        raise ValueError(f"Split {split} is outside 1..{len(blocks) - 1}.")
+    train_blocks = [
+        np.sort(block) for index, block in enumerate(blocks) if index not in (0, split)
+    ]
     return {
-        "train": np.sort(train_index),
-        "validation": np.sort(blocks[validation_block]),
+        "train": np.sort(np.concatenate(train_blocks)),
+        "validation": np.sort(blocks[split]),
         "test": np.sort(blocks[0]),
+        "train_blocks": train_blocks,
     }
 
 
-def validate_split(data: pd.DataFrame, split: dict[str, np.ndarray], seed: int) -> None:
+def tuning_folds(split: dict[str, Any]) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Leave-one-block-out folds as positions within ``split["train"]``."""
+    train = split["train"]
+    blocks = split["train_blocks"]
+    folds = []
+    for held_out, block in enumerate(blocks):
+        fit = np.concatenate([other for index, other in enumerate(blocks) if index != held_out])
+        folds.append((np.searchsorted(train, np.sort(fit)), np.searchsorted(train, block)))
+    return folds
+
+
+def validate_split(data: pd.DataFrame, split: dict[str, Any], index: int) -> None:
     covered = np.concatenate([split[name] for name in SPLIT_NAMES])
     if len(covered) != len(data) or len(np.unique(covered)) != len(data):
-        raise ValueError(f"Seed {seed} split does not cover every row exactly once.")
+        raise ValueError(f"Split {index} does not cover every row exactly once.")
     groups = data.index.get_level_values("expocode").to_numpy()
     for left, right in combinations(SPLIT_NAMES, 2):
         overlap = set(groups[split[left]]).intersection(groups[split[right]])
         if overlap:
-            raise ValueError(f"Seed {seed} leaks cruises between {left} and {right}: {overlap}")
+            raise ValueError(f"Split {index} leaks cruises between {left} and {right}: {overlap}")
     logger.info(
-        "Seed {} split: {:,} train / {:,} validation / {:,} test observations",
-        seed,
+        "Split {}: {:,} train / {:,} validation / {:,} test observations",
+        index,
         len(split["train"]),
         len(split["validation"]),
         len(split["test"]),
     )
 
 
-def write_split(output_dir: Path, data: pd.DataFrame, split: dict[str, np.ndarray], seed: int):
+def write_split(output_dir: Path, data: pd.DataFrame, split: dict[str, Any], index: int):
     frame = pd.DataFrame({
         "row_id": np.concatenate([split[name] for name in SPLIT_NAMES]),
         "split": np.repeat(SPLIT_NAMES, [len(split[name]) for name in SPLIT_NAMES]),
     }).sort_values("row_id", ignore_index=True)
     frame["expocode"] = data.index.get_level_values("expocode").to_numpy()[frame["row_id"]]
-    path = output_dir / "splits" / f"seed_{seed}.parquet"
+    path = output_dir / "splits" / f"split_{index}.parquet"
     path.parent.mkdir(parents=True, exist_ok=True)
     frame.to_parquet(path, index=False)
 
 
 def train_member(
+    member: Member,
     data: pd.DataFrame,
     config: dict[str, Any],
-    seed: int,
+    blocks: Sequence[np.ndarray],
     target_trials: int,
     optuna_jobs: int,
     fingerprint: str,
@@ -414,28 +466,22 @@ def train_member(
     feature_names = config["data"]["feature_names"]
     target_name = config["data"]["target_name"]
 
-    split = member_split(data, config, seed)
-    validate_split(data, split, seed)
-    write_split(output_dir, data, split, seed)
+    split = split_indices(blocks, member.split)
     train = data.iloc[split["train"]]
 
-    inner_folds = ta.make_train_test_folds(
-        train,
-        n_splits=config["cross_validation"]["inner_splits"],
-        shuffle=True,
-        random_state=seed,
-    )
     study = optimize(
         train,
-        inner_folds,
+        tuning_folds(split),
         config,
-        seed,
-        output_dir / "studies" / f"seed_{seed}.sqlite3",
-        f"catboost_quantile_seed_{seed}",
+        member,
+        output_dir / "studies" / f"{member.name}.sqlite3",
+        f"catboost_quantile_{member.name}",
         target_trials,
         optuna_jobs,
     )
-    model = make_model(config, seed, selected_params(study, config, seed, final_fit=True))
+    model = make_model(
+        config, member.seed, selected_params(study, config, member.seed, final_fit=True)
+    )
     model.fit(train[feature_names], train[target_name])
 
     scores = {}
@@ -443,12 +489,14 @@ def train_member(
         subset = data.iloc[split[name]]
         prediction = model.predict_quantiles(subset[feature_names])
         scores[name] = score_subsets(subset, prediction, config)
-        path = output_dir / "predictions" / f"seed_{seed}_{name}.parquet"
+        path = output_dir / "predictions" / f"{member.name}_{name}.parquet"
         path.parent.mkdir(parents=True, exist_ok=True)
         prediction_frame(subset, split[name], prediction, config).to_parquet(path, index=False)
 
     model.training_metadata_ = {
-        "seed": seed,
+        "split": member.split,
+        "replicate": member.replicate,
+        "seed": member.seed,
         "data_fingerprint": fingerprint,
         "observation_counts": {name: len(split[name]) for name in SPLIT_NAMES},
         "cruise_counts": {
@@ -462,22 +510,22 @@ def train_member(
         "scores": scores,
     }
 
-    model_path = output_dir / "models" / f"quantile_seed_{seed}.joblib"
+    model_path = output_dir / "models" / f"quantile_{member.name}.joblib"
     model_path.parent.mkdir(parents=True, exist_ok=True)
     model.save(model_path)
-    write_json(output_dir / "models" / f"quantile_seed_{seed}.json", model.training_metadata_)
-    logger.success("Saved member for seed {} to {}", seed, model_path)
+    write_json(output_dir / "models" / f"quantile_{member.name}.json", model.training_metadata_)
+    logger.success("Saved member {} to {}", member.name, model_path)
     return model_path
 
 
 def summarize_ensemble_test(
     data: pd.DataFrame,
     config: dict[str, Any],
-    seeds: Sequence[int],
+    members: Sequence[Member],
     fingerprint: str,
 ) -> None:
     output_dir = resolve_path(config["output_dir"])
-    paths = [output_dir / "predictions" / f"seed_{seed}_test.parquet" for seed in seeds]
+    paths = [output_dir / "predictions" / f"{member.name}_test.parquet" for member in members]
     missing = [path for path in paths if not path.exists()]
     if missing:
         raise FileNotFoundError(
@@ -491,66 +539,97 @@ def summarize_ensemble_test(
         raise ValueError("Ensemble members were evaluated on different test rows.")
 
     columns = prediction_columns(config)
-    prediction = np.mean([frame[columns].to_numpy() for frame in frames], axis=0)
-    test = data.iloc[row_ids]
-    prediction_frame(test, row_ids, prediction, config).to_parquet(
-        output_dir / "predictions" / "ensemble_test.parquet", index=False
+    splits = sorted({member.split for member in members})
+    replicates = sorted({member.replicate for member in members})
+    if len(members) != len(splits) * len(replicates):
+        raise ValueError("The ensemble must be a balanced splits x replicates design.")
+    member_predictions = np.stack([frame[columns].to_numpy() for frame in frames])
+    predictions = member_predictions.reshape(
+        len(splits), len(replicates), *member_predictions.shape[1:]
     )
+    decomposition = ta.decompose_variance(predictions)
+    prediction = decomposition["mean"]
+    test = data.iloc[row_ids]
+
+    frame = prediction_frame(test, row_ids, prediction, config)
+    variance_means = {}
+    for index, alpha in enumerate(quantiles(config)):
+        frame[f"split_var_q_{alpha:g}"] = decomposition["split_var"][:, index]
+        frame[f"hpo_var_q_{alpha:g}"] = decomposition["hpo_var"][:, index]
+        variance_means[f"q_{alpha:g}"] = {
+            "split_var": float(decomposition["split_var"][:, index].mean()),
+            "hpo_var": float(decomposition["hpo_var"][:, index].mean()),
+        }
+    frame.to_parquet(output_dir / "predictions" / "ensemble_test.parquet", index=False)
+
+    split_scores = {
+        str(split): score_subsets(test, predictions[index].mean(axis=0), config)
+        for index, split in enumerate(splits)
+    }
+    member_scores = {
+        member.name: score_subsets(test, member_predictions[index], config)
+        for index, member in enumerate(members)
+    }
     write_json(
         output_dir / "ensemble_test_metrics.json",
         {
-            "seeds": list(seeds),
+            "members": [member.name for member in members],
+            "seeds": [member.seed for member in members],
             "data_fingerprint": fingerprint,
             "aggregation": "mean",
             "test_observations": len(row_ids),
             "scores": score_subsets(test, prediction, config),
+            "variance_means": variance_means,
+            "split_mean_scores": split_scores,
+            "member_scores": member_scores,
         },
     )
-    logger.success("Wrote held-out ensemble test metrics over {} members", len(seeds))
+    logger.success("Wrote held-out ensemble test metrics over {} members", len(members))
 
 
-def assemble_ensemble(config: dict[str, Any], seeds: Sequence[int], fingerprint: str) -> Path:
+def assemble_ensemble(
+    config: dict[str, Any], members: Sequence[Member], fingerprint: str
+) -> Path:
     output_dir = resolve_path(config["output_dir"])
-    model_paths = [output_dir / "models" / f"quantile_seed_{seed}.joblib" for seed in seeds]
+    model_paths = [output_dir / "models" / f"quantile_{member.name}.joblib" for member in members]
     missing = [path for path in model_paths if not path.exists()]
     if missing:
         raise FileNotFoundError(
             "Cannot assemble ensemble; missing members: " + ", ".join(str(path) for path in missing)
         )
-    members = [ta.CatBoostResidualRegressor.load(path) for path in model_paths]
+    estimators = [ta.CatBoostResidualRegressor.load(path) for path in model_paths]
     ensemble = ta.QuantileRegressionEnsemble(
-        estimators=members,
-        seeds=seeds,
+        estimators=estimators,
+        seeds=[member.seed for member in members],
         quantiles=quantiles(config),
         aggregation=config["ensemble"]["aggregation"],
+        member_splits=[member.split for member in members],
+        member_replicates=[member.replicate for member in members],
     )
     ensemble_path = output_dir / "models" / "quantile_ensemble.joblib"
     ensemble.save(ensemble_path)
     write_json(
         output_dir / "models" / "manifest.json",
         {
-            "seeds": list(seeds),
             "quantiles": quantiles(config),
             "aggregation": config["ensemble"]["aggregation"],
             "data_fingerprint": fingerprint,
             "feature_names": config["data"]["feature_names"],
             "target_name": config["data"]["target_name"],
-            "members": [path.name for path in model_paths],
+            "members": [
+                {
+                    "split": member.split,
+                    "replicate": member.replicate,
+                    "seed": member.seed,
+                    "file": path.name,
+                }
+                for member, path in zip(members, model_paths)
+            ],
             "ensemble": ensemble_path.name,
         },
     )
-    n_members = len(seeds)
-    logger.success("Saved {}-member ensemble to {}", n_members, ensemble_path)
+    logger.success("Saved {}-member ensemble to {}", len(members), ensemble_path)
     return ensemble_path
-
-
-def selected_seeds(config: dict[str, Any], requested_seed: int | None) -> list[int]:
-    configured = [int(seed) for seed in config["seeds"]]
-    if requested_seed is None:
-        return configured
-    if requested_seed not in configured:
-        raise ValueError(f"Seed {requested_seed} is not in configured seeds {configured}.")
-    return [requested_seed]
 
 
 @app.command(help=__doc__)
@@ -570,9 +649,13 @@ def main(
         Stage,
         typer.Option(help="Pipeline stage to run. Existing Optuna studies are resumed."),
     ] = Stage.ALL,
-    seed: Annotated[
+    split: Annotated[
         int | None,
-        typer.Option(help="Run only this configured member seed."),
+        typer.Option(help="Run only this split (validation block 1..n_parts-1)."),
+    ] = None,
+    hpo_replicate: Annotated[
+        int | None,
+        typer.Option(help="Run only this HPO replicate within each selected split."),
     ] = None,
     n_trials: Annotated[
         int | None,
@@ -603,8 +686,8 @@ def main(
         config["model"]["maximum_iterations"] = maximum_iterations
     if output_dir is not None:
         config["output_dir"] = str(output_dir)
-    seeds = selected_seeds(config, seed)
-    all_seeds = selected_seeds(config, None)
+    selected = members(config, split, hpo_replicate)
+    all_members = members(config)
     target_trials = n_trials or int(config["optimization"]["n_trials"])
     resolved_optuna_jobs = optuna_jobs or int(config["optimization"]["n_jobs"])
     if target_trials < 1:
@@ -616,27 +699,35 @@ def main(
     data = prepare_data(config)
     fingerprint = data_fingerprint(data)
     logger.info("Data fingerprint: {}", fingerprint)
+    blocks = outer_blocks(data, config)
+    selected_splits = sorted({member.split for member in selected})
     if dry_run:
-        for member_seed in seeds:
-            validate_split(data, member_split(data, config, member_seed), member_seed)
+        for index in selected_splits:
+            validate_split(data, split_indices(blocks, index), index)
         logger.success("Dry run completed; no studies or models were written")
         return
 
     if stage in (Stage.TRAIN, Stage.ALL):
-        for member_seed in seeds:
+        output_dir = resolve_path(config["output_dir"])
+        for index in selected_splits:
+            split_dict = split_indices(blocks, index)
+            validate_split(data, split_dict, index)
+            write_split(output_dir, data, split_dict, index)
+        for member in selected:
             train_member(
+                member,
                 data,
                 config,
-                member_seed,
+                blocks,
                 target_trials,
                 resolved_optuna_jobs,
                 fingerprint,
             )
 
-    should_assemble = stage is Stage.ASSEMBLE or (stage is Stage.ALL and seed is None)
-    if should_assemble:
-        summarize_ensemble_test(data, config, all_seeds, fingerprint)
-        assemble_ensemble(config, all_seeds, fingerprint)
+    filtered = split is not None or hpo_replicate is not None
+    if stage is Stage.ASSEMBLE or (stage is Stage.ALL and not filtered):
+        summarize_ensemble_test(data, config, all_members, fingerprint)
+        assemble_ensemble(config, all_members, fingerprint)
 
 
 if __name__ == "__main__":
