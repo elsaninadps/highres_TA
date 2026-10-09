@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>High-resolution TA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="uncertainty.css">
+</head>
+<body>
+  <header id="topbar" class="topbar">
+    <a class="brand" href="#top" id="brand"></a>
+    <nav id="nav" aria-label="Sections"></nav>
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode">◐</button>
+  </header>
+
+  <main id="top">
+    <section id="hero" class="hero"></section>
+    <div id="content"></div>
+  </main>
+
+  <footer id="footer" class="footer"></footer>
+  <div id="load-error" class="load-error" hidden></div>
+
+  <!-- Order matters: uncertainty.js registers block renderers, app.js renders the page. -->
+  <script src="uncertainty.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

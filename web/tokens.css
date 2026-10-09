@@ -1,0 +1,65 @@
+/* Design tokens. RdYlBu (ColorBrewer, 11 classes) is the base palette.
+   Semantic roles: blue = trained/known, yellow = validation/highlight, red = test/uncertainty. */
+:root {
+  /* RdYlBu ramp, red -> blue */
+  --rdylbu-0: #a50026; --rdylbu-1: #d73027; --rdylbu-2: #f46d43; --rdylbu-3: #fdae61;
+  --rdylbu-4: #fee090; --rdylbu-5: #ffffbf; --rdylbu-6: #e0f3f8; --rdylbu-7: #abd9e9;
+  --rdylbu-8: #74add1; --rdylbu-9: #4575b4; --rdylbu-10: #313695;
+
+  /* surfaces + text */
+  --bg: #f7f9fc;
+  --bg-tint: #eef4fa;
+  --surface: #ffffff;
+  --surface-2: #f1f5fa;
+  --border: #dbe3ee;
+  --text: #17203a;
+  --text-muted: #55617c;
+
+  /* roles */
+  --accent: #4575b4;
+  --accent-strong: #313695;
+  --c-train: #74add1;
+  --c-validation: #fdae61;
+  --c-test: #d73027;
+  --c-warn: #f46d43;
+  --c-observed: #17203a;
+  --c-ensemble: #313695;
+  --c-member: rgba(69, 117, 180, 0.55);
+  --c-band: rgba(116, 173, 209, 0.28);
+
+  /* callout tints */
+  --tone-info-bg: #e8f2fa; --tone-info-bar: #4575b4;
+  --tone-warn-bg: #fdeee0; --tone-warn-bar: #f46d43;
+  --tone-key-bg: #fff8d6;  --tone-key-bar: #e0a800;
+
+  --radius: 14px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 2px rgba(23, 32, 58, 0.06), 0 8px 24px rgba(23, 32, 58, 0.06);
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
+  --maxw: 1080px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1424; --bg-tint: #131b30; --surface: #172038; --surface-2: #1d2744;
+    --border: #2a3558; --text: #e8edf8; --text-muted: #9aa8c7;
+    --accent: #74add1; --accent-strong: #abd9e9;
+    --c-observed: #f1f5ff; --c-ensemble: #abd9e9;
+    --c-member: rgba(116, 173, 209, 0.5); --c-band: rgba(116, 173, 209, 0.22);
+    --tone-info-bg: #16263f; --tone-warn-bg: #3a2218; --tone-key-bg: #3a3315;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1424; --bg-tint: #131b30; --surface: #172038; --surface-2: #1d2744;
+  --border: #2a3558; --text: #e8edf8; --text-muted: #9aa8c7;
+  --accent: #74add1; --accent-strong: #abd9e9;
+  --c-observed: #f1f5ff; --c-ensemble: #abd9e9;
+  --c-member: rgba(116, 173, 209, 0.5); --c-band: rgba(116, 173, 209, 0.22);
+  --tone-info-bg: #16263f; --tone-warn-bg: #3a2218; --tone-key-bg: #3a3315;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
+}

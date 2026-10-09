@@ -1,0 +1,454 @@
+{
+  "site": {
+    "title": "High-resolution Total Alkalinity",
+    "short_title": "highres-TA",
+    "description": "How a quantile-regression ensemble estimates ocean total alkalinity and its uncertainty.",
+    "footer": "Swiss Data Science Center · Numbers are generated from the 1993–2021 run by web/build_data.py · Edit the text in web/content.json",
+    "nav": [
+      {
+        "id": "data",
+        "label": "Data"
+      },
+      {
+        "id": "preprocessing",
+        "label": "Preprocessing"
+      },
+      {
+        "id": "splits",
+        "label": "Splits"
+      },
+      {
+        "id": "model",
+        "label": "Model"
+      },
+      {
+        "id": "ensemble",
+        "label": "Ensemble"
+      },
+      {
+        "id": "uncertainty",
+        "label": "Uncertainty"
+      },
+      {
+        "id": "limitations",
+        "label": "Caveats"
+      }
+    ]
+  },
+  "hero": {
+    "eyebrow": "Ocean carbon · machine learning",
+    "headline": "Estimating total alkalinity, and how sure we are about it",
+    "lead": "A gradient-boosted quantile model learns total alkalinity (TA) from bottle samples. We train **{{run.n_members}} models** that differ in the data they saw and in how they were tuned, then use their disagreement as an uncertainty signal.",
+    "stats": [
+      {
+        "label": "Bottle samples",
+        "value": "{{run.n_total|int}}",
+        "note": "after quality control"
+      },
+      {
+        "label": "Cruises",
+        "value": "{{run.n_cruises|int}}",
+        "note": "GLODAPv2.2023"
+      },
+      {
+        "label": "Ensemble members",
+        "value": "{{run.n_members|int}}",
+        "note": "6 splits × 7 HPO replicates"
+      },
+      {
+        "label": "Held-out RMSE",
+        "value": "{{ensemble_scores.all.median_rmse|1}} µmol/kg",
+        "note": "R² = {{ensemble_scores.all.median_r2|3}}"
+      }
+    ]
+  },
+  "sections": [
+    {
+      "id": "data",
+      "kicker": "01 · Data",
+      "title": "Bottle alkalinity, matched to satellite and ocean context",
+      "lead": "The target is total alkalinity measured on water samples. Each sample is paired with the physical and chemical state of the water at that place and time.",
+      "blocks": [
+        {
+          "type": "cards",
+          "columns": 3,
+          "items": [
+            {
+              "tag": "Target",
+              "title": "Total alkalinity (TA)",
+              "body": "In µmol/kg, from the **GLODAPv2.2023** bottle compilation. Seawater TA spans roughly 2000–2500 µmol/kg, so errors of ~19 µmol/kg are under 1 %."
+            },
+            {
+              "tag": "Predictors",
+              "title": "10 features",
+              "body": "Salinity, temperature, nitrate, phosphate, silicate, bottom depth, satellite sea-surface height (ADT) and the 3 coordinates of the sample on a unit sphere."
+            },
+            {
+              "tag": "Period",
+              "title": "1993 – 2021",
+              "body": "One parquet file per year is collocated with gridded products. The run starts in 1993 because satellite altimetry (DUACS) begins then; data back to 1982 exist and are not yet used."
+            }
+          ]
+        },
+        {
+          "type": "table",
+          "title": "Model inputs",
+          "columns": [
+            "Feature",
+            "Kind",
+            "Why it is there"
+          ],
+          "rows": [
+            [
+              "`salinity`",
+              "Bottle measurement",
+              "The dominant control on TA; also used as the linear baseline."
+            ],
+            [
+              "`temperature`",
+              "Bottle measurement",
+              "Separates water masses that share a salinity."
+            ],
+            [
+              "`nitrate`, `phosphate`, `silicate`",
+              "Bottle measurement",
+              "Biogeochemical tracers; help resolve regional TA–salinity offsets."
+            ],
+            [
+              "`ssh_adt`",
+              "Satellite altimetry (DUACS, CMEMS)",
+              "Dynamic topography: a proxy for ocean circulation and water-mass structure."
+            ],
+            [
+              "`bottomdepth`",
+              "Bathymetry",
+              "Separates open ocean from shelf and coastal regimes."
+            ],
+            [
+              "`ncoord_x`, `ncoord_y`, `ncoord_z`",
+              "Engineered from lat/lon",
+              "Position on a unit sphere, so longitude 179° and −179° are neighbours."
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "tone": "info",
+          "title": "Collocation",
+          "body": "Each bottle's time and position are matched to the nearest cell of each gridded product (nearest day, nearest grid point). Day-of-year (sine/cosine) is computed by the pipeline but **not** among the 10 features in this run."
+        }
+      ]
+    },
+    {
+      "id": "preprocessing",
+      "kicker": "02 · Preprocessing",
+      "title": "From raw bottles to a clean training table",
+      "lead": "Four filters remove unreliable or incomplete samples. The bars below show how many rows survive each step, computed from the actual data.",
+      "blocks": [
+        {
+          "type": "funnel",
+          "title": "Rows remaining after each step"
+        },
+        {
+          "type": "steps",
+          "items": [
+            {
+              "title": "Salinity window",
+              "body": "Keep samples with salinity between **20 and 40**. This drops estuarine and freshwater-influenced water, where the TA–salinity relationship differs."
+            },
+            {
+              "title": "Quality control",
+              "body": "Keep bottles with WOCE flag **2** (good) whose cruise-level GLODAP adjustment is at most **6 µmol/kg** in magnitude. Cruises needing larger corrections are discarded."
+            },
+            {
+              "title": "Complete cases",
+              "body": "Require TA, salinity, temperature, nitrate and altimetry (SSH) to be present."
+            },
+            {
+              "title": "De-duplicate",
+              "body": "Drop repeated records of the same cruise, time, position and depth."
+            },
+            {
+              "title": "Feature engineering",
+              "body": "Convert latitude and longitude to three unit-sphere coordinates. These replace raw lat/lon in the model."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "splits",
+      "kicker": "03 · Train–test splits",
+      "title": "Cruises are never split across train and test",
+      "lead": "Neighbouring bottles on one cruise are nearly identical, so a random row-wise split would leak information. The data are cut into **7 blocks of whole cruises**, balanced across salinity.",
+      "blocks": [
+        {
+          "type": "text",
+          "body": "Blocks come from a stratified, cruise-grouped k-fold (salinity quintiles; fixed seed 42). **Block 0 is the test set for every model** and is never trained on. Pick a split below to see which blocks it uses."
+        },
+        {
+          "type": "split-explorer"
+        },
+        {
+          "type": "cards",
+          "columns": 3,
+          "items": [
+            {
+              "tag": "Train",
+              "title": "5 blocks (~19 400 rows)",
+              "body": "Used to fit the model. Hyperparameters are tuned by **leave-one-block-out** cross-validation inside these 5 blocks."
+            },
+            {
+              "tag": "Validation",
+              "title": "1 block (~3 900 rows)",
+              "body": "Different for each of the 6 splits. Not used for fitting or tuning: kept aside to calibrate the uncertainty estimate."
+            },
+            {
+              "tag": "Test",
+              "title": "Block 0 (3 891 rows)",
+              "body": "Identical for every member. Gives an honest score for each model and for the ensemble."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "model",
+      "kicker": "04 · Model",
+      "title": "A linear baseline plus a boosted residual",
+      "lead": "TA is mostly a straight-line function of salinity. The model captures that first, then lets gradient boosting explain what is left.",
+      "blocks": [
+        {
+          "type": "steps",
+          "items": [
+            {
+              "title": "1 · Linear baseline",
+              "body": "Ordinary least squares on salinity alone (polynomial degree 1) gives a first estimate, `TA₀(S)`."
+            },
+            {
+              "title": "2 · Boosted residual",
+              "body": "CatBoost learns the residual `TA − TA₀` from all 10 features using a **multi-quantile loss**, predicting the 10th, 50th and 90th percentiles together."
+            },
+            {
+              "title": "3 · Prediction",
+              "body": "The final output is `TA₀ + residual quantile`: a median estimate plus a lower and upper bound for every sample."
+            }
+          ]
+        },
+        {
+          "type": "equation",
+          "items": [
+            "TA_q(x) = a + b·salinity + r_q(x)       for q ∈ {0.1, 0.5, 0.9}",
+            "loss = mean over q of pinball_q(TA − TA_q)       (CatBoost MultiQuantile)"
+          ]
+        },
+        {
+          "type": "table",
+          "title": "Hyperparameters searched by Optuna (TPE, 100 trials per member, 20 random start-up trials)",
+          "columns": [
+            "Parameter",
+            "Search range",
+            "Scale"
+          ],
+          "rows": [
+            [
+              "`learning_rate`",
+              "0.01 – 1.0",
+              "log"
+            ],
+            [
+              "`l2_leaf_reg`",
+              "1 – 100",
+              "log"
+            ],
+            [
+              "`min_data_in_leaf`",
+              "1 – 100",
+              "integer"
+            ],
+            [
+              "`depth`",
+              "4 – 8",
+              "integer"
+            ],
+            [
+              "`random_strength`",
+              "1 – 10",
+              "linear"
+            ]
+          ]
+        },
+        {
+          "type": "callout",
+          "tone": "info",
+          "title": "How the number of trees is set",
+          "body": "Each trial trains up to 1000 trees with early stopping (50 rounds) on the held-out inner fold. The final model is refit on all 5 training blocks with the **median** best iteration across folds."
+        }
+      ]
+    },
+    {
+      "id": "ensemble",
+      "kicker": "05 · Ensemble members",
+      "title": "42 models from two sources of variation",
+      "lead": "Every member is a complete, independently tuned model. They differ in only two ways, which lets us separate two kinds of uncertainty.",
+      "blocks": [
+        {
+          "type": "cards",
+          "columns": 2,
+          "items": [
+            {
+              "tag": "Axis 1 · 6 splits",
+              "title": "Which data the model saw",
+              "body": "Split k holds block k out for validation and trains on the other five. Members from different splits learn from different subsets of cruises."
+            },
+            {
+              "tag": "Axis 2 · 7 replicates",
+              "title": "How the model was tuned",
+              "body": "Within a split, seven independent Optuna searches (different seeds) pick hyperparameters from the same data. They differ only through the search path and training randomness."
+            }
+          ]
+        },
+        {
+          "type": "member-grid",
+          "title": "All members",
+          "hint": "Each cell is one model: rows are splits, columns are HPO replicates. Click a cell for its tuned hyperparameters and test scores."
+        },
+        {
+          "type": "text",
+          "body": "The ensemble prediction is the **mean** of the members' quantiles. Because all members share the same test block, every difference between them on that block comes from the two axes above."
+        }
+      ]
+    },
+    {
+      "id": "uncertainty",
+      "kicker": "06 · Uncertainty",
+      "title": "Disagreement between members is a measure of doubt",
+      "lead": "Two signals are available for every prediction: the spread of the member medians, and the width of the predicted quantile band. Explore how they behave on real held-out samples.",
+      "blocks": [
+        {
+          "type": "cards",
+          "columns": 3,
+          "items": [
+            {
+              "tag": "Epistemic",
+              "title": "Member spread",
+              "body": "Standard deviation of the 42 member medians. It grows where models disagree, typically in sparsely sampled regions."
+            },
+            {
+              "tag": "Aleatoric",
+              "title": "Quantile width",
+              "body": "Predicted Q90 − Q10 divided by 2.563, which equals one standard deviation for a normal distribution."
+            },
+            {
+              "tag": "Decomposed",
+              "title": "Split vs. HPO",
+              "body": "By the law of total variance, member variance = variance between splits + average variance within a split (between HPO replicates)."
+            }
+          ]
+        },
+        {
+          "type": "uncertainty-explorer"
+        },
+        {
+          "type": "variance-decomposition",
+          "title": "Where does the member variance come from?"
+        },
+        {
+          "type": "text",
+          "body": "On the held-out test block the spread of member medians correlates with the absolute error at **r = {{spread_vs_error.corr_abs_err.member_std|2}}**, versus **r = {{spread_vs_error.corr_abs_err.scaled_iqr|2}}** for the scaled quantile width."
+        },
+        {
+          "type": "spread-vs-error",
+          "title": "Does the uncertainty predict the error?"
+        },
+        {
+          "type": "callout",
+          "tone": "key",
+          "title": "Read this as a ranking, not an error bar",
+          "body": "Higher member spread goes with larger errors (the curves rise), but the raw spread is several times smaller than the actual RMSE in every bin. It tells you **which predictions to trust less**, not yet **by how many µmol/kg**. Rescaling on the validation blocks is the planned next step."
+        },
+        {
+          "type": "ensemble-growth",
+          "title": "How many members are enough?"
+        }
+      ]
+    },
+    {
+      "id": "limitations",
+      "kicker": "07 · Caveats",
+      "title": "What is still open",
+      "lead": "This page describes the current state of the work, not a finished product.",
+      "blocks": [
+        {
+          "type": "callout",
+          "tone": "warn",
+          "title": "Intervals are too narrow",
+          "body": "The nominal 80 % interval (Q10–Q90) covers **{{ensemble_scores.all.interval_80pct_coverage|pct}}** of held-out test samples. Averaging members does not fix this, so the bands should be widened or rescaled."
+        },
+        {
+          "type": "cards",
+          "columns": 2,
+          "items": [
+            {
+              "tag": "Next",
+              "title": "Calibrate on validation blocks",
+              "body": "Use validation RMSE to choose between the member std and the scaled Q90 − Q10 as the uncertainty estimate, then rescale it. Compare against the untouched test block."
+            },
+            {
+              "tag": "Next",
+              "title": "Extend the record",
+              "body": "Data from 1982–1992 exist but are excluded because altimetry is missing. Dropping SSH or filling it would extend the training period."
+            },
+            {
+              "tag": "Next",
+              "title": "Independent check",
+              "body": "Compare predictions with the BATS and HOT time series, which were not used for tuning."
+            },
+            {
+              "tag": "Next",
+              "title": "Full-period inference",
+              "body": "Apply the ensemble to the gridded 8-day, 0.25° fields, where the inputs are gridded products rather than bottle measurements."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "explorer": {
+    "title": "Explore the ensemble",
+    "intro": "Choose which members to include and click a sample to see how each one predicts it. Only a random subset of {{run.sample_size}} test samples is shown here.",
+    "presets": [
+      {
+        "id": "all",
+        "label": "All 42"
+      },
+      {
+        "id": "one-split",
+        "label": "One split (7 replicates)"
+      },
+      {
+        "id": "one-replicate",
+        "label": "One replicate (6 splits)"
+      },
+      {
+        "id": "random",
+        "label": "Random subset"
+      },
+      {
+        "id": "single",
+        "label": "Single member"
+      }
+    ],
+    "labels": {
+      "observed": "Observed TA",
+      "ensemble": "Ensemble mean",
+      "member": "Member median",
+      "band": "Q10–Q90",
+      "spread": "Member spread (std)",
+      "rmse": "RMSE",
+      "coverage": "80 % coverage",
+      "width": "Mean Q10–Q90 width",
+      "n_members": "Members selected"
+    }
+  }
+}
