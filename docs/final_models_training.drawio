@@ -1,0 +1,116 @@
+<mxfile host="app.diagrams.net" agent="Codex">
+  <diagram id="final-model-training" name="Final model training">
+    <mxGraphModel dx="1809" dy="1143" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1100" math="1" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-56" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;spacing=6;align=center;verticalAlign=middle;fontFamily=Helvetica;opacity=60;dashed=1;dashPattern=8 8;" value="" vertex="1">
+          <mxGeometry height="100" width="235" x="184" y="1923.75" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-55" connectable="0" parent="1" style="group" value="" vertex="1">
+          <mxGeometry height="460" width="720" x="100" y="1415" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-52" parent="yOjfAlotrDIJkJE4W6Bm-55" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFBFC;strokeColor=#CCCCCC;strokeWidth=1;arcSize=4;perimeterSpacing=0;glass=0;shadow=0;snapToPoint=0;absoluteArcSize=0;dashed=1;dashPattern=8 8;" value="" vertex="1">
+          <mxGeometry height="440" width="700" x="10" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-54" connectable="0" parent="yOjfAlotrDIJkJE4W6Bm-55" style="group" value="" vertex="1">
+          <mxGeometry height="440" width="700" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-3" parent="yOjfAlotrDIJkJE4W6Bm-54" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFBFC;strokeColor=#8993A4;strokeWidth=1;arcSize=4;perimeterSpacing=0;glass=0;shadow=0;snapToPoint=0;absoluteArcSize=0;" value="" vertex="1">
+          <mxGeometry height="440" width="700" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-4" parent="yOjfAlotrDIJkJE4W6Bm-54" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=17;fontStyle=1;fontColor=#42526E;" value="SINGLE MEMBER (random state = 1...7)" vertex="1">
+          <mxGeometry height="30" width="655" x="25" y="15" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-5" parent="yOjfAlotrDIJkJE4W6Bm-54" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1;fontColor=default;fontSize=11;spacing=8;opacity=40;align=right;verticalAlign=top;spacingLeft=0;arcSize=11;fontFamily=Helvetica;spacingRight=29;" value="&lt;b&gt;Cross Validation&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;cruise-grouped, salinity stratified&lt;br&gt;&lt;font style=&quot;&quot;&gt;ensures that a cruise will belong exclusively to training or test folds, and that a span of salinity values is present in all splits.&lt;/font&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="105" width="225" x="32" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-8" parent="yOjfAlotrDIJkJE4W6Bm-54" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=center;verticalAlign=middle;spacingLeft=0;spacing=6;fontFamily=Helvetica;fontSize=13;fontColor=default;opacity=30;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="180" width="630" x="32" y="230" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-9" parent="yOjfAlotrDIJkJE4W6Bm-54" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=16;fontStyle=1;fontColor=#006B7A;" value="Total Alkalinity Residual Regressor&amp;nbsp;" vertex="1">
+          <mxGeometry height="30" width="520" x="52" y="236" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-10" parent="yOjfAlotrDIJkJE4W6Bm-54" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;spacing=6;" value="&lt;b&gt;Linear model (OLS)&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;\(X_{\text{salt}} = [\text{salinity}]\)&lt;br&gt;Remove primary linear salinity&amp;nbsp;signal&lt;/font&gt;" vertex="1">
+          <mxGeometry height="90" width="144" x="57" y="277" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-12" parent="yOjfAlotrDIJkJE4W6Bm-54" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;spacing=6;align=center;spacingLeft=0;fontColor=default;" value="&lt;b&gt;CatBoost residual model&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;X = [all 10 features]&lt;br&gt;&lt;div style=&quot;&quot;&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;Loss function: MultiQuantile loss&lt;/span&gt;&lt;/div&gt;Quantiles (%): 1, 2.5, 5, 10, &lt;br&gt;25, 50, 75, 90, 95, 97.5, 99&lt;/font&gt;" vertex="1">
+          <mxGeometry height="130" width="195" x="441" y="257" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-14" edge="1" parent="yOjfAlotrDIJkJE4W6Bm-54" source="yOjfAlotrDIJkJE4W6Bm-39" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#666666;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;align=center;verticalAlign=bottom;fontFamily=Helvetica;fontSize=11;fontColor=default;fillColor=#f5f5f5;targetPerimeterSpacing=3;labelBackgroundColor=none;endArrow=block;endFill=1;curved=0;" target="yOjfAlotrDIJkJE4W6Bm-12">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="252" y="207" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-16" edge="1" parent="yOjfAlotrDIJkJE4W6Bm-54" source="yOjfAlotrDIJkJE4W6Bm-10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#666666;strokeWidth=1.5;endArrow=none;endFill=0;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;curved=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fillColor=#f5f5f5;" target="yOjfAlotrDIJkJE4W6Bm-37" value="">
+          <mxGeometry relative="1" x="-0.3319" y="15" as="geometry">
+            <mxPoint as="offset" />
+            <mxPoint x="237" y="367" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-17" edge="1" parent="yOjfAlotrDIJkJE4W6Bm-54" source="yOjfAlotrDIJkJE4W6Bm-37" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#666666;strokeWidth=1.5;endArrow=block;endFill=1;fontSize=11;entryX=0;entryY=0.5;entryDx=0;entryDy=0;curved=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;fillColor=#f5f5f5;" target="yOjfAlotrDIJkJE4W6Bm-12" value="">
+          <mxGeometry relative="1" x="0.3333" y="35" as="geometry">
+            <mxPoint as="offset" />
+            <mxPoint x="387" y="367" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-37" parent="yOjfAlotrDIJkJE4W6Bm-54" style="shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;shapeInside=1;fixedSize=1;strokeColor=#666666;align=center;verticalAlign=middle;fontFamily=Helvetica;fontSize=12;fillColor=none;fontStyle=0;size=20;spacing=0;spacingBottom=0;fontColor=#333333;" value="$$y&#39; = y − \text{OLS}(X_{\text{salt}})$$" vertex="1">
+          <mxGeometry height="46" width="144" x="249" y="299" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-33" parent="yOjfAlotrDIJkJE4W6Bm-54" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;strokeWidth=1;verticalAlign=top;spacing=8;fontFamily=Helvetica;arcSize=11;opacity=40;spacingLeft=29;fontColor=default;" value="&lt;b&gt;Tuned parameters&lt;/b&gt;&lt;br&gt;&lt;div&gt;learning_rate,&amp;nbsp;&lt;br&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;min_data_in_leaf,&lt;/span&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt; &lt;/span&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;l2_leaf_reg,&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;depth,&amp;nbsp;&lt;br&gt;&lt;/span&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;rsm, random_strength&lt;/span&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="105" width="170" x="419" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-6" parent="yOjfAlotrDIJkJE4W6Bm-54" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;fontSize=14;spacing=8;verticalAlign=top;arcSize=11;align=center;" value="&lt;b&gt;Hyperparameter tuning&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;&lt;font style=&quot;&quot;&gt;250 Optuna trials per seed&lt;br&gt;median validation MultiQuantile loss.&lt;br&gt;5-fold cross validation&lt;/font&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="105" width="215" x="230" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-57" edge="1" parent="yOjfAlotrDIJkJE4W6Bm-54" source="yOjfAlotrDIJkJE4W6Bm-6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#666666;strokeWidth=1.5;exitX=0.25;exitY=1;exitDx=0;exitDy=0;align=center;verticalAlign=bottom;fontFamily=Helvetica;fontSize=11;fontColor=default;fillColor=#f5f5f5;targetPerimeterSpacing=3;labelBackgroundColor=none;endArrow=none;endFill=0;curved=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="yOjfAlotrDIJkJE4W6Bm-39" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="808" y="1545" as="sourcePoint" />
+            <mxPoint x="1009" y="1634" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-39" parent="yOjfAlotrDIJkJE4W6Bm-54" style="rounded=1;whiteSpace=wrap;html=1;fontSize=10;arcSize=50;" value="Best params for final model" vertex="1">
+          <mxGeometry height="30" width="144" x="340" y="183" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-22" edge="1" parent="1" source="yOjfAlotrDIJkJE4W6Bm-18" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#666666;strokeWidth=1.5;endArrow=block;endFill=1;fillColor=#f5f5f5;targetPerimeterSpacing=3;" target="yOjfAlotrDIJkJE4W6Bm-20">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-23" edge="1" parent="1" source="yOjfAlotrDIJkJE4W6Bm-20" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#666666;strokeWidth=1.5;endArrow=block;endFill=1;curved=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.25;exitY=1;exitDx=0;exitDy=0;fillColor=#f5f5f5;targetPerimeterSpacing=3;" target="yOjfAlotrDIJkJE4W6Bm-5">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="675" y="1178" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-24" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;spacing=6;align=center;verticalAlign=middle;fontFamily=Helvetica;" value="&lt;font&gt;&lt;b&gt;&lt;font style=&quot;font-size: 14px;&quot;&gt;7&lt;/font&gt;&lt;/b&gt;&lt;b&gt;&lt;font style=&quot;font-size: 14px;&quot;&gt;&amp;nbsp;trained ensemble&lt;/font&gt;&lt;/b&gt;&lt;b&gt;&lt;font style=&quot;font-size: 14px;&quot;&gt;&amp;nbsp;members&lt;/font&gt;&lt;/b&gt;&lt;br&gt;each member is trained on a different subset of data and has different hyperparameters.&amp;nbsp;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="100" width="235" x="172" y="1935" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-25" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=3;fontSize=15;spacing=8;arcSize=50;" value="&lt;b&gt;Final ensemble estimator&lt;/b&gt;&lt;font style=&quot;font-size:12px&quot;&gt;&lt;br&gt;7-member ensemble&lt;br&gt;aggregation = mean for each quantile&lt;br&gt;quantiles = 11-value grid&lt;br&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="122.5" width="235" x="502" y="1923.75" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-27" edge="1" parent="1" source="yOjfAlotrDIJkJE4W6Bm-24" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#666666;strokeWidth=1.5;endArrow=block;endFill=1;fontSize=11;align=center;verticalAlign=bottom;fontFamily=Helvetica;fontColor=default;labelBackgroundColor=none;targetPerimeterSpacing=3;curved=0;fillColor=#f5f5f5;" target="yOjfAlotrDIJkJE4W6Bm-25" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-44" connectable="0" parent="1" style="group" value="" vertex="1">
+          <mxGeometry height="70" width="510" x="184" y="1325" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-21" parent="yOjfAlotrDIJkJE4W6Bm-44" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=default;fontSize=13;spacingLeft=25;align=left;opacity=50;spacing=8;" value="&lt;b&gt;7 members&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size: 12px;&quot;&gt;generated using different random seeds&lt;br&gt;each sees a different training dataset&lt;/font&gt;" vertex="1">
+          <mxGeometry height="70" width="287.5" x="222.5" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-20" parent="yOjfAlotrDIJkJE4W6Bm-44" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;fontColor=#333333;fontSize=15;fontStyle=1;" value="Repeat independently for &lt;br&gt;each ensemble member" vertex="1">
+          <mxGeometry height="70" width="245" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-45" connectable="0" parent="1" style="group" value="" vertex="1">
+          <mxGeometry height="90" width="510" x="184" y="1190" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-31" parent="yOjfAlotrDIJkJE4W6Bm-45" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4FAFF;strokeColor=#4C9AFF;fontSize=13;align=left;strokeWidth=1;verticalAlign=middle;spacing=8;fontFamily=Helvetica;fontColor=default;spacingLeft=25;opacity=50;" value="&lt;div style=&quot;&quot;&gt;&lt;b&gt;Features (X)&lt;/b&gt;&lt;/div&gt;&lt;span style=&quot;&quot;&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;&lt;font style=&quot;font-size: 12px;&quot;&gt;salinity · temperature · ssh_adt · &lt;br&gt;nitrate · phosphate · silicate · &lt;br&gt;bottomdepth ·ncoord_x · ncoord_y · ncoord_z&lt;/font&gt;&lt;/span&gt;&lt;/div&gt;&lt;/span&gt;" vertex="1">
+          <mxGeometry height="90" width="287.5" x="222.5" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-18" parent="yOjfAlotrDIJkJE4W6Bm-45" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E9F2FF;strokeColor=#4C9AFF;strokeWidth=2;fontColor=#172B4D;fontSize=15;spacing=8;" value="&lt;b&gt;Prepared full training data&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:12px&quot;&gt;Target: talk · grouped by expocode&lt;br&gt;10 model features&lt;/font&gt;" vertex="1">
+          <mxGeometry height="90" width="245" as="geometry" />
+        </mxCell>
+        <mxCell id="yOjfAlotrDIJkJE4W6Bm-46" edge="1" parent="1" source="yOjfAlotrDIJkJE4W6Bm-8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=1.5;targetPerimeterSpacing=3;align=center;verticalAlign=bottom;fontFamily=Helvetica;fontSize=11;fontColor=default;labelBackgroundColor=none;endArrow=block;endFill=1;curved=0;" target="yOjfAlotrDIJkJE4W6Bm-24">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
