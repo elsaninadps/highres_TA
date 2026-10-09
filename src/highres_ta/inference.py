@@ -1,8 +1,12 @@
+import string
 from functools import lru_cache
 
 import numpy as np
 import pandas as pd
 import xarray as xr
+from loguru import logger
+
+from highres_ta.quantile_ensemble import QuantileRegressionEnsemble
 
 from .features import latlon_to_spherical_coords
 
@@ -53,78 +57,78 @@ def open_inference_data(x_names: tuple[str, ...]):
     return features
 
 
-def select_inference_date(ds: xr.Dataset, date: str) -> pd.DataFrame:
+def create_labels_for_members(model: QuantileRegressionEnsemble) -> pd.MultiIndex:
+    """
+    Creates labels for each member of the ensemble based on their split and replicate.
+    """
+    member_splits = np.array(model.member_splits, dtype=int)
+    n_splits = max(member_splits) - min(member_splits) + 1
+    n_replicates = int(len(member_splits) / n_splits)
+
+    replicates = string.ascii_lowercase[:n_replicates] * (max(member_splits) + 1)
+    labels = list(zip(member_splits, replicates))
+    labels = pd.MultiIndex.from_tuples(labels, names=["split", "replicate"])
+
+    return labels
+
+
+def select_inference_date(
+    ds: xr.Dataset, date: str | list[str | pd.Timestamp] | pd.Timestamp
+) -> pd.DataFrame:
     """
     Selects the nearest date from the dataset.
     """
     time = ds.time.sel(time=date, method="nearest")
     dayofyear = time.dt.dayofyear
-    ds = ds.sel(time=[date], dayofyear=[dayofyear], method="nearest")
-    df = ds.to_dataframe().dropna()
+
+    if not isinstance(date, list):
+        date = [date]
+
+    ds = ds.sel(time=date, dayofyear=dayofyear, method="nearest").drop_vars("dayofyear")
+    logger.debug(ds)
+    df = ds.to_dataframe().dropna(subset="salinity")
     return df
 
 
-def predict_map_for_date(model, features: xr.Dataset, date: str) -> xr.Dataset:
+def predict_map_for_date(
+    model: QuantileRegressionEnsemble, features: xr.Dataset, date: str
+) -> xr.DataArray:
     """
     Predicts the target variable using the provided model and features.
     """
-
+    logger.info(f"Selecting features for {date}")
     features_df = select_inference_date(features, date)
 
+    logger.info(f"Predicting ensemble members for {date}")
     yhat = model.predict_members(features_df)
+    logger.debug(f"yhat shape: {yhat.shape}")
 
-    yhat_avg_df = pd.DataFrame(
-        np.median(yhat, axis=0),
-        index=features_df.index,
-        columns=model.quantiles,
+    da = (
+        xr
+        .DataArray(
+            yhat,
+            dims=["member", "coords", "quantile"],
+            coords={
+                "member": create_labels_for_members(model),
+                "coords": features_df.index,
+                "quantile": model.quantiles,
+            },
+        )
+        .unstack(["member", "coords"])
+        .chunk({"lat": 180, "lon": 180, "quantile": 1})
     )
 
-    yhat_std_df = pd.DataFrame(
-        np.std(yhat, axis=0),
-        index=features_df.index,
-        columns=model.quantiles,
-    )
+    da.replicate.attrs = {
+        "description": "Replicate of the model for each split, each with its own hyperparameters."
+    }
+    da.split.attrs = {
+        "description": "Split of the model for each fold of cross-validation (shared across replicates)."
+    }
+    da.lat.attrs = {"units": "degrees_north", "long_name": "Latitude"}
+    da.lon.attrs = {"units": "degrees_east", "long_name": "Longitude"}
+    da["quantile"].attrs = {"units": "dimensionless", "long_name": "Quantile"}
 
-    yhat_mad_df = pd.DataFrame(
-        np.median(np.abs(yhat - np.median(yhat, axis=0)), axis=0),
-        index=features_df.index,
-        columns=model.quantiles,
-    )
+    da["replicate"] = da.replicate.astype("str")
+    da["split"] = da.split.astype("int32")
 
-    yhat_quantile_diffs = pd.DataFrame(
-        np.median(np.diff(yhat[:, :, [0, -1]], axis=2), axis=0),
-        index=features_df.index,
-        columns=[f"quantile_diff_{model.quantiles[0]}_{model.quantiles[-1]}"],
-    )
-
-    yhat_avg_da = (
-        yhat_avg_df
-        .to_xarray()
-        .to_array(dim="quantile", name="talk_pred")
-        .transpose("time", "dayofyear", "quantile", "lat", "lon")
-    )
-
-    yhat_std_da = (
-        yhat_std_df
-        .to_xarray()
-        .to_array(dim="quantile", name="talk_pred_std")
-        .transpose("time", "dayofyear", "quantile", "lat", "lon")
-    )
-
-    yhat_mad_da = (
-        yhat_mad_df
-        .to_xarray()
-        .to_array(dim="quantile", name="talk_pred_mad")
-        .transpose("time", "dayofyear", "quantile", "lat", "lon")
-    )
-
-    yhat_quantile_diffs_da = (
-        yhat_quantile_diffs
-        .to_xarray()
-        .to_array(dim="quantile_diff", name="talk_pred_quantile_diff")
-        .transpose("time", "dayofyear", "quantile_diff", "lat", "lon")
-    )
-
-    yhat_ds = xr.merge([yhat_avg_da, yhat_std_da, yhat_mad_da, yhat_quantile_diffs_da])
-
-    return yhat_ds
+    return da

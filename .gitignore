@@ -21,3 +21,4 @@ data/
 *.db
 *pkl
 *.pdf
+.ipynb_checkpoints

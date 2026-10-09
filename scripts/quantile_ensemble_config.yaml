@@ -6,7 +6,7 @@ data:
   target_name: talk
   coordinate_columns: [ expocode, time, lat, lon, depth ]
   quality_columns: [ talkqc, talkf ]
-  non_null_columns: [ talk, salinity, temperature, nitrate, ssh_adt ]
+  non_null_columns: [ talk, salinity, temperature, nitrate ]
   minimum_salinity: 20
   maximum_salinity: 40
   engineered_feature_names:
