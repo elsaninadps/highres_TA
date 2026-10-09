@@ -1,6 +1,4 @@
-# Seven independent seeds control the grouped folds, Optuna sampler, and CatBoost.
-seeds: [ 43, 44, 45, 46, 47, 48, 49 ]
-output_dir: models/quantile_ensemble
+output_dir: models/quantile_ensemble_split_hpo
 
 data:
   parquet_glob: data/training/*.pq
@@ -32,29 +30,31 @@ data:
 model:
   linear_features: [ salinity ]
   polynomial_degree: 1
-  quantiles: [ 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.975, 0.99 ]
-  maximum_iterations: 2000
+  quantiles: [ 0.1, 0.5, 0.9 ]
+  maximum_iterations: 1000
   early_stopping_rounds: 50
-  trial_thread_count: 4
+  trial_thread_count: 12
   final_thread_count: -1
 
 cross_validation:
-  # Every outer fold is scored; inner folds alone select hyperparameters.
-  outer_splits: 6
-  inner_splits: 5
-  final_tuning_splits: 5
+  # One shared partition: block 0 always tests. Split k = 1..n_parts-1 validates on
+  # block k and trains on the remaining n_parts-2 blocks. Hyperparameters are tuned by
+  # leave-one-block-out CV over those training blocks, fixed for every replicate of a split.
+  # split_random_state is independent of the member seeds so every member shares
+  # the same held-out test block.
+  n_parts: 7
+  split_random_state: 42
 
 optimization:
-  n_trials: 250
-  n_jobs: 16
+  n_trials: 100
+  n_jobs: 5
 
 evaluation:
   minimum_bottomdepth: 300
   intervals:
-    50pct: [ 0.25, 0.75 ]
     80pct: [ 0.1, 0.9 ]
-    90pct: [ 0.05, 0.95 ]
-    95pct: [ 0.025, 0.975 ]
 
 ensemble:
   aggregation: mean
+  # HPO replicates r = 0..n-1 per split: independent Optuna studies (seed = 100 * split + r).
+  n_hpo_replicates: 7

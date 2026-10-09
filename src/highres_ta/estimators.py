@@ -99,7 +99,9 @@ class CatBoostResidualRegressor(BaseEstimator, RegressorMixin):
         X_df = self._validate_feature_frame(X)
 
         yhat_linear = self.linear_model_.predict(X_df)
-        yhat_boosted = self.boosting_model_.predict(X_df)
+        yhat_boosted = self.boosting_model_.predict(
+            X_df, thread_count=self.catboost_kwargs.get("thread_count", -1)
+        )
 
         return self._pred_helper(yhat_linear, yhat_boosted)
 
@@ -183,9 +185,7 @@ class CatBoostResidualRegressor(BaseEstimator, RegressorMixin):
                 os.unlink(tmp)
         self.__dict__.update(state)
         if "quantiles_" not in state:
-            self.quantiles_ = self._quantiles_from_loss(
-                getattr(self, "loss_function", None)
-            )
+            self.quantiles_ = self._quantiles_from_loss(getattr(self, "loss_function", None))
 
     def _pred_helper(self, yhat_linear, yhat_boosted):
         yhat_linear = np.asarray(yhat_linear, dtype=float)
@@ -251,9 +251,7 @@ class CatBoostResidualRegressor(BaseEstimator, RegressorMixin):
 
     @staticmethod
     def _quantiles_from_loss(loss_function: str | None) -> np.ndarray | None:
-        if not isinstance(loss_function, str) or not loss_function.startswith(
-            "MultiQuantile:"
-        ):
+        if not isinstance(loss_function, str) or not loss_function.startswith("MultiQuantile:"):
             return None
 
         options = loss_function.partition(":")[2].split(";")
